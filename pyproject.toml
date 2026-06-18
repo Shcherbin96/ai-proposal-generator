@@ -1,0 +1,14 @@
+[project]
+name = "ai-proposal-generator"
+version = "0.1.0"
+description = "AI generates a branded commercial proposal (КП) PDF from a product list"
+requires-python = ">=3.12"
+dependencies = [
+    "openai>=1.50",        # OpenAI-совместимый клиент (ходим в Gemini)
+    "python-dotenv>=1.0",  # читает ключ из .env
+    "pyyaml>=6.0",         # читает список товаров
+    "jinja2>=3.1",         # HTML-шаблон КП
+]
+
+[tool.uv]
+package = false
