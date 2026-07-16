@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from decimal import Decimal
 
 import pytest
@@ -26,6 +28,27 @@ def full_context(**overrides):
 def test_money_formats_with_thin_spaces():
     assert money(Decimal("1234567")) == "1 234 567"
     assert money(Decimal("8900")) == "8 900"
+    assert money(8900) == "8 900"
+
+
+def test_money_formats_fractional_with_comma_decimal():
+    assert money(Decimal("8900.50")) == "8 900,50"
+    # A whole value stays clean even when written with a fractional part.
+    assert money(Decimal("8900.00")) == "8 900"
+
+
+def _parse_money(rendered: str) -> Decimal:
+    return Decimal(rendered.replace(" ", "").replace(",", "."))
+
+
+def test_money_line_items_sum_to_rendered_total():
+    # The displayed numbers must obey document arithmetic: rendering must not
+    # round line items independently of the total.
+    prices = [Decimal("8900.50"), Decimal("21500.50")]
+    total = sum(prices, Decimal(0))
+    assert money(total) == "30 401"
+    rendered_sum = sum((_parse_money(money(p)) for p in prices), Decimal(0))
+    assert rendered_sum == _parse_money(money(total))
 
 
 def test_html_injection_is_escaped():
@@ -68,6 +91,19 @@ def test_chrome_not_found_raises_actionable_error(monkeypatch):
         find_chrome()
 
 
+def test_windows_per_user_chrome_found_via_localappdata(monkeypatch, tmp_path):
+    # Per-user Windows installs (no admin rights) live under %LOCALAPPDATA%,
+    # not Program Files.
+    monkeypatch.delenv("CHROME_PATH", raising=False)
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    monkeypatch.setattr("platform.system", lambda: "Windows")
+    exe = tmp_path / "Google" / "Chrome" / "Application" / "chrome.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert find_chrome() == str(exe)
+
+
 def _chrome_available() -> bool:
     try:
         find_chrome()
@@ -86,8 +122,64 @@ def test_html_to_pdf_produces_valid_pdf(tmp_path):
 
 
 def test_html_to_pdf_rejects_failed_chrome(monkeypatch, tmp_path):
-    # /usr/bin/false, not /bin/false: macOS never shipped /bin/false (only
-    # /usr/bin/false); /usr/bin/false exists on both macOS and Linux.
-    monkeypatch.setenv("CHROME_PATH", "/usr/bin/false")
+    # sys.executable exists on every platform and exits nonzero when fed
+    # Chrome's flags, exercising the "Chrome failed" branch portably.
+    monkeypatch.setenv("CHROME_PATH", sys.executable)
     with pytest.raises(RenderError, match="failed"):
         html_to_pdf("<html></html>", tmp_path / "out.pdf")
+
+
+def test_html_to_pdf_timeout_raises(monkeypatch, tmp_path):
+    monkeypatch.setenv("CHROME_PATH", sys.executable)
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd="chrome", timeout=120)
+
+    monkeypatch.setattr("proposal_gen.render.subprocess.run", fake_run)
+    with pytest.raises(RenderError, match="timed out"):
+        html_to_pdf("<html></html>", tmp_path / "out.pdf")
+
+
+def test_html_to_pdf_rejects_exit_zero_without_output(monkeypatch, tmp_path):
+    monkeypatch.setenv("CHROME_PATH", sys.executable)
+    monkeypatch.setattr(
+        "proposal_gen.render.subprocess.run",
+        lambda *a, **k: subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+    )
+    with pytest.raises(RenderError, match="no PDF"):
+        html_to_pdf("<html></html>", tmp_path / "out.pdf")
+
+
+def test_html_to_pdf_rejects_wrong_magic_bytes(monkeypatch, tmp_path):
+    monkeypatch.setenv("CHROME_PATH", sys.executable)
+    out = tmp_path / "out.pdf"
+
+    def fake_run(*args, **kwargs):
+        out.write_bytes(b"not a pdf")
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("proposal_gen.render.subprocess.run", fake_run)
+    with pytest.raises(RenderError, match="not a valid PDF"):
+        html_to_pdf("<html></html>", out)
+
+
+def test_intermediate_html_deleted_after_successful_pdf(monkeypatch, tmp_path):
+    monkeypatch.setenv("CHROME_PATH", sys.executable)
+    out = tmp_path / "out.pdf"
+
+    def fake_run(*args, **kwargs):
+        out.write_bytes(b"%PDF-1.7 fake")
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("proposal_gen.render.subprocess.run", fake_run)
+    html_to_pdf("<html></html>", out)
+    assert out.is_file()
+    assert not out.with_suffix(".html").exists()
+
+
+def test_intermediate_html_kept_on_failure_for_debugging(monkeypatch, tmp_path):
+    monkeypatch.setenv("CHROME_PATH", sys.executable)
+    out = tmp_path / "out.pdf"
+    with pytest.raises(RenderError):
+        html_to_pdf("<html></html>", out)
+    assert out.with_suffix(".html").is_file()

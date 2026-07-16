@@ -29,7 +29,9 @@ _WINDOWS_PATHS = (
 
 def find_chrome() -> str:
     """Locate a Chrome/Chromium binary on Linux, macOS or Windows."""
-    override = os.getenv("CHROME_PATH")
+    # .strip(): a stray space or trailing newline in .env would otherwise
+    # surface as a confusing "missing file" error.
+    override = os.getenv("CHROME_PATH", "").strip()
     if override:
         if Path(override).is_file():
             return override
@@ -39,7 +41,15 @@ def find_chrome() -> str:
         if found:
             return found
     system = platform.system()
-    extra = _MAC_APPS if system == "Darwin" else _WINDOWS_PATHS if system == "Windows" else ()
+    extra: list[str] = []
+    if system == "Darwin":
+        extra = list(_MAC_APPS)
+    elif system == "Windows":
+        extra = list(_WINDOWS_PATHS)
+        local_appdata = os.environ.get("LOCALAPPDATA")
+        if local_appdata:
+            # Per-user installs (no admin rights) live under %LOCALAPPDATA%.
+            extra.append(str(Path(local_appdata) / "Google/Chrome/Application/chrome.exe"))
     for path in extra:
         if Path(path).is_file():
             return path
@@ -50,8 +60,17 @@ def find_chrome() -> str:
 
 
 def money(value: Decimal | int) -> str:
-    """8900 -> '8 900'. Formatting lives in code, not in the template."""
-    return f"{value:,.0f}".replace(",", " ")
+    """8900 -> '8 900'; 8900.50 -> '8 900,50'. Formatting lives in code, not in the template.
+
+    Integral values render with no decimals; fractional values render with
+    exactly two, so displayed line items always sum to the displayed total.
+    Relies on upstream input validation (price gt=0): NaN and negatives never reach here.
+    """
+    value = Decimal(value)
+    s = f"{value:,.0f}" if value == value.to_integral_value() else f"{value:,.2f}"
+    # Thousands comma -> space must run BEFORE decimal point -> comma, or the
+    # freshly introduced decimal comma would be clobbered into a space.
+    return s.replace(",", " ").replace(".", ",")
 
 
 def render_html(template_path: Path, context: dict[str, object]) -> str:
@@ -81,7 +100,12 @@ def html_to_pdf(html: str, out_pdf: Path) -> None:
     ]
     logger.info("Rendering PDF via %s", chrome)
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        # encoding/errors instead of text=True: Chrome's stderr is not
+        # guaranteed UTF-8 on non-UTF-8 locales (Windows); never let a
+        # diagnostic message turn into a UnicodeDecodeError.
+        result = subprocess.run(
+            cmd, capture_output=True, encoding="utf-8", errors="replace", timeout=120
+        )
     except subprocess.TimeoutExpired as exc:
         raise RenderError("Chrome timed out while rendering the PDF") from exc
     if result.returncode != 0:
@@ -91,4 +115,8 @@ def html_to_pdf(html: str, out_pdf: Path) -> None:
         raise RenderError(f"Chrome exited 0 but produced no PDF at {out_pdf}")
     if out_pdf.read_bytes()[:5] != b"%PDF-":
         raise RenderError(f"Output at {out_pdf} is not a valid PDF")
+    # Success: the intermediate .html has served its purpose — remove it. On
+    # any failure above it is deliberately left in place so the exact input
+    # Chrome saw can be inspected for debugging.
+    out_html.unlink()
     logger.info("PDF written: %s (%d bytes)", out_pdf, out_pdf.stat().st_size)
