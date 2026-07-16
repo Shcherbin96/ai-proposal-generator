@@ -91,6 +91,31 @@ def test_json_mode_garbage_raises_config_error(monkeypatch):
         load_settings()
 
 
+def test_max_repairs_defaults_to_one(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    monkeypatch.delenv("LLM_MAX_REPAIRS", raising=False)
+    assert load_settings().max_repairs == 1
+
+
+def test_max_repairs_override(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    monkeypatch.setenv("LLM_MAX_REPAIRS", "3")
+    assert load_settings().max_repairs == 3
+
+
+def test_max_repairs_zero_is_valid(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    monkeypatch.setenv("LLM_MAX_REPAIRS", "0")
+    assert load_settings().max_repairs == 0
+
+
+def test_negative_max_repairs_raises_config_error(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    monkeypatch.setenv("LLM_MAX_REPAIRS", "-1")
+    with pytest.raises(ConfigError, match="LLM_MAX_REPAIRS"):
+        load_settings()
+
+
 def test_invalid_numeric_settings_raise_config_error(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "k")
     monkeypatch.setenv("LLM_TIMEOUT_S", "soon")

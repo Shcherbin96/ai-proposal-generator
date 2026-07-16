@@ -44,6 +44,7 @@ class Settings:
     # would manufacture exactly the failure the repair loop (Task 4) exists to
     # fix. Considered and rejected — let responses run to natural completion.
     json_mode: bool = True
+    max_repairs: int = 1
 
 
 def _positive_float_env(name: str, default: str) -> float:
@@ -112,4 +113,5 @@ def load_settings() -> Settings:
         max_retries=_non_negative_int_env("LLM_MAX_RETRIES", "2"),
         temperature=_bounded_float_env("LLM_TEMPERATURE", "0.4", 0.0, 2.0),
         json_mode=_bool_env("LLM_JSON_MODE", "true"),
+        max_repairs=_non_negative_int_env("LLM_MAX_REPAIRS", "1"),
     )

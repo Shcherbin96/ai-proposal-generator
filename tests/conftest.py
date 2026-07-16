@@ -7,14 +7,25 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class FakeProvider:
-    """LLMProvider test double that replays a canned response. No network."""
+    """LLMProvider test double. No network.
 
-    def __init__(self, response: str) -> None:
+    A single string replays forever (backward compatible with the original
+    single-response double). A list is a one-shot queue: each call pops the
+    next response, and popping an empty queue raises AssertionError — a test
+    that asserts on an exact call count should fail loudly on one call too
+    many, not silently replay stale data.
+    """
+
+    def __init__(self, response: str | list[str]) -> None:
         self.response = response
         self.prompts: list[str] = []
 
     def complete(self, prompt: str) -> str:
         self.prompts.append(prompt)
+        if isinstance(self.response, list):
+            if not self.response:
+                raise AssertionError("FakeProvider queue exhausted — unexpected extra call")
+            return self.response.pop(0)
         return self.response
 
 

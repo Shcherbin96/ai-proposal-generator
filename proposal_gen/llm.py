@@ -147,12 +147,61 @@ def strip_code_fence(text: str) -> str:
     return text
 
 
-def request_content(provider: LLMProvider, prompt: str, expected_count: int) -> LLMContent:
-    """One provider round-trip: complete -> parse JSON -> validate the contract."""
-    raw_text = provider.complete(prompt)
-    logger.debug("LLM raw response: %d chars", len(raw_text))
+# Cap on how much of a bad reply gets embedded back into the repair prompt.
+# A pathologically long reply (or a runaway/adversarial one) would otherwise
+# double token spend on retry for no additional diagnostic value — the error
+# message already says what's wrong; the model doesn't need the whole thing back.
+_BAD_REPLY_CAP = 4000
+
+REPAIR_TEMPLATE = (
+    "{prompt}\n\n"
+    "Your previous reply was rejected:\n{bad_reply}\n\n"
+    "Validation error: {error}\n\n"
+    "Return ONLY the corrected strict JSON object, nothing else."
+)
+
+
+def _parse_and_validate(raw_text: str, expected_count: int) -> LLMContent:
+    """Parse + contract-check one reply. Raises LLMError — the repairable class."""
     try:
         raw = json.loads(strip_code_fence(raw_text))
     except json.JSONDecodeError as exc:
         raise LLMError(f"LLM response is not valid JSON: {exc}") from exc
     return validate_llm_content(raw, expected_count)
+
+
+def request_content(
+    provider: LLMProvider, prompt: str, expected_count: int, max_repairs: int = 1
+) -> LLMContent:
+    """One or more provider round-trips: complete -> parse JSON -> validate.
+
+    On a repairable failure (invalid JSON, an unclosed fence, or a contract
+    violation from validate_llm_content), the validation error is fed back to
+    the model and the call retried, up to max_repairs times. Transport errors
+    raised by provider.complete() itself are a different failure class —
+    they are NOT caught here and propagate immediately; the SDK already
+    retries those (LLM_MAX_RETRIES), so retrying them again here would be
+    redundant and would blur two distinct knobs into one.
+    """
+    current_prompt = prompt
+    attempt = 0
+    while True:
+        raw_text = provider.complete(current_prompt)  # transport errors: not caught, propagate
+        logger.debug("LLM raw response: %d chars", len(raw_text))
+        try:
+            return _parse_and_validate(raw_text, expected_count)
+        except LLMError as exc:
+            attempt += 1
+            if attempt > max_repairs:
+                raise
+            logger.warning(
+                "LLM reply failed validation (attempt %d/%d): %s — requesting repair",
+                attempt,
+                max_repairs,
+                exc,
+            )
+            current_prompt = REPAIR_TEMPLATE.format(
+                prompt=prompt,
+                bad_reply=raw_text[:_BAD_REPLY_CAP],
+                error=exc,
+            )

@@ -1,3 +1,4 @@
+import json
 import logging
 from decimal import Decimal
 from types import SimpleNamespace
@@ -76,6 +77,60 @@ def test_request_content_rejects_wrong_count(canned_response):
     provider = FakeProvider(canned_response)  # 5 items
     with pytest.raises(LLMError, match="in order"):
         request_content(provider, "prompt", expected_count=3)
+
+
+# --- bounded repair loop ---
+
+
+def test_request_content_repairs_after_bad_json_then_succeeds(canned_response):
+    provider = FakeProvider(["this is not json", canned_response])
+    content = request_content(provider, "prompt", expected_count=5, max_repairs=1)
+    assert len(content.items) == 5
+    assert len(provider.prompts) == 2
+    repair_prompt = provider.prompts[1]
+    assert "not valid JSON" in repair_prompt
+    assert "corrected" in repair_prompt
+
+
+def test_request_content_repairs_after_wrong_indices_then_succeeds(canned_response):
+    bad = json.dumps({"intro": "hi", "items": [{"index": 0, "description": "d"}], "closing": "bye"})
+    provider = FakeProvider([bad, canned_response])
+    content = request_content(provider, "prompt", expected_count=5, max_repairs=1)
+    assert len(content.items) == 5
+    assert len(provider.prompts) == 2
+    assert "in order" in provider.prompts[1]
+
+
+def test_request_content_max_repairs_zero_fails_after_one_call():
+    provider = FakeProvider("this is not json")
+    with pytest.raises(LLMError, match="not valid JSON"):
+        request_content(provider, "prompt", expected_count=1, max_repairs=0)
+    assert len(provider.prompts) == 1
+
+
+def test_request_content_exhausts_repairs_and_raises_last_error():
+    provider = FakeProvider(["this is not json", "still not json"])
+    with pytest.raises(LLMError, match="not valid JSON"):
+        request_content(provider, "prompt", expected_count=1, max_repairs=1)
+    assert len(provider.prompts) == 2
+
+
+class _TransportFailingProvider:
+    """Simulates a transport-level failure raised from inside complete()."""
+
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+
+    def complete(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        raise LLMError("request failed")
+
+
+def test_request_content_transport_error_propagates_without_repair():
+    provider = _TransportFailingProvider()
+    with pytest.raises(LLMError, match="request failed"):
+        request_content(provider, "prompt", expected_count=1, max_repairs=3)
+    assert len(provider.prompts) == 1
 
 
 # --- OpenAICompatProvider with a mocked client (no network) ---

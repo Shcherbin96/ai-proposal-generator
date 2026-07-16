@@ -18,14 +18,21 @@ from proposal_gen.render import html_to_pdf, render_html
 logger = logging.getLogger(__name__)
 
 
-def generate(data_path: Path, provider: LLMProvider, out_pdf: Path | None = None) -> Path:
+def generate(
+    data_path: Path,
+    provider: LLMProvider,
+    out_pdf: Path | None = None,
+    max_repairs: int = 1,
+) -> Path:
     logger.info("Stage 1/4: loading input from %s", data_path)
     data = load_input(data_path)
     logger.info("Loaded %d products for client %r", len(data.products), data.client)
 
     logger.info("Stage 2/4: requesting prose from the LLM")
     prompt = build_prompt(data, config.SELLER["name"], config.SELLER["tagline"])
-    content = request_content(provider, prompt, expected_count=len(data.products))
+    content = request_content(
+        provider, prompt, expected_count=len(data.products), max_repairs=max_repairs
+    )
     logger.info("LLM content validated: %d descriptions", len(content.items))
 
     logger.info("Stage 3/4: rendering HTML")
