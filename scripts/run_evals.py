@@ -25,8 +25,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from evals.checks import CheckResult, run_all_checks  # noqa: E402
+from evals.gate import evaluate_degradation  # noqa: E402
 from proposal_gen import config  # noqa: E402
-from proposal_gen.errors import ConfigError, LLMError  # noqa: E402
+from proposal_gen.errors import ConfigError, InputError, LLMError  # noqa: E402
 from proposal_gen.llm import (  # noqa: E402
     LLMProvider,
     OpenAICompatProvider,
@@ -201,6 +202,16 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="free-text operational note included in the report header",
     )
+    parser.add_argument(
+        "--fail-under-ok-rate",
+        type=float,
+        default=None,
+        metavar="FLOAT",
+        help=f"degradation gate (default: off). If set, fail (exit {InputError.exit_code}) "
+        "when the overall contract-ok rate (ok + repaired) / total across all configs is "
+        "below this, or when any quality check's pass-rate over contract-valid replies is "
+        "below 1.0",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -258,6 +269,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Report written to {args.output}")
     else:
         print(report)
+
+    # Gate check runs after the report is written, so a degraded run still
+    # leaves a reviewable artifact (e.g. for CI's upload-artifact: if:
+    # always() step) even when this exits non-zero.
+    all_flat = [r for results in all_results.values() for r in results]
+    degradations = evaluate_degradation(all_flat, args.fail_under_ok_rate)
+    if degradations:
+        for message in degradations:
+            print(message, file=sys.stderr)
+        return InputError.exit_code
     return 0
 
 
