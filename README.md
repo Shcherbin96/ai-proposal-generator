@@ -160,7 +160,7 @@ Note the last stage of the pipeline: a PDF is only reported as success after ver
 - **The API key cannot leak through repr.** `Settings.api_key` is declared `repr=False`, so logging or printing the settings object never exposes it; a test asserts this. The key is never written to logs.
 - **Prices are never sent to the model** — a data-minimization boundary as much as a correctness one.
 - **Prompt injection is bounded, not prevented.** Client, project and product names flow from the untrusted YAML straight into the prompt — a hostile name ("ignore previous instructions...") can influence the *prose*. What it cannot do: change any number (prices never round-trip through the model), break the document structure (the reply must still pass the strict index contract or the run fails with exit 69), inject HTML (autoescape), or leak secrets (none are in the prompt). The blast radius is a weird sentence in a document you review before sending — and the eval checks flag invented numbers and markdown artifacts on top.
-- **Documented tradeoff:** client and project names *do* appear in INFO-level logs (pipeline stage messages). They are business data, not secrets; if your log destination is untrusted, route stderr accordingly.
+- **Documented tradeoff:** the client name *does* appear in INFO-level logs (pipeline stage messages). They are business data, not secrets; if your log destination is untrusted, route stderr accordingly.
 
 ## Testing
 
@@ -187,7 +187,7 @@ Tests that need a real Chrome binary skip gracefully on machines without one —
 
 **Coverage:** `uv run pytest --cov=proposal_gen` measures **~98%** (343 statements, 7 missed). The gaps are structural, not neglect: `find_chrome()` takes a different branch per OS (PATH lookup, macOS app bundles, Windows Program Files/`LOCALAPPDATA`), so no single platform exercises every line, and the bare `python -m proposal_gen` entry point (`__main__.py`) only runs as a subprocess, never under pytest. CI enforces a **94% floor on the Linux leg only** — a coverage gate tied to a single, OS-specific line count would be noise on the other two runners.
 
-CI (`.github/workflows/ci.yml`) runs ruff lint, ruff format check, and strict mypy (`proposal_gen`, `scripts`, `evals`) on Linux; the full test suite on Ubuntu, macOS, and Windows, with the coverage gate above on the Linux leg; and a Docker build-only job — all with least-privilege permissions (`contents: read`), per-ref concurrency cancellation, job timeouts, actions pinned by commit SHA, and Dependabot watching both `github-actions` and `uv` weekly. A separate workflow (`.github/workflows/evals.yml`) runs the live evals on a schedule instead of on every push — see [Evals](#evals) for the degradation gate it enforces.
+CI (`.github/workflows/ci.yml`) runs ruff lint, ruff format check, and strict mypy (`proposal_gen`, `scripts`, `evals`) on Linux; the full test suite on Ubuntu, macOS, and Windows, with the coverage gate above on the Linux leg; and a Docker build-only job — all with least-privilege permissions (`contents: read`), per-ref concurrency cancellation, job timeouts, actions pinned by commit SHA, and Dependabot watching `github-actions`, `uv`, and `docker` weekly. A separate workflow (`.github/workflows/evals.yml`) runs the live evals on a schedule instead of on every push — see [Evals](#evals) for the degradation gate it enforces.
 
 ## Evals
 

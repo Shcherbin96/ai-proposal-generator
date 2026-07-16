@@ -14,3 +14,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # The interpreter is pinned to 3.12 project-wide (.python-version, CI);
+      # only digest freshness should flow for the base image.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
