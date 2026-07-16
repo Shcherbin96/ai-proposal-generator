@@ -64,6 +64,33 @@ def test_zero_temperature_is_valid(monkeypatch):
     assert s.temperature == 0.0
 
 
+def test_json_mode_defaults_true(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    monkeypatch.delenv("LLM_JSON_MODE", raising=False)
+    assert load_settings().json_mode is True
+
+
+@pytest.mark.parametrize("value", ["1", "true", "True", "TRUE", "yes", "on"])
+def test_json_mode_truthy_values(monkeypatch, value):
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    monkeypatch.setenv("LLM_JSON_MODE", value)
+    assert load_settings().json_mode is True
+
+
+@pytest.mark.parametrize("value", ["0", "false", "False", "FALSE", "no", "off"])
+def test_json_mode_falsy_values(monkeypatch, value):
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    monkeypatch.setenv("LLM_JSON_MODE", value)
+    assert load_settings().json_mode is False
+
+
+def test_json_mode_garbage_raises_config_error(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    monkeypatch.setenv("LLM_JSON_MODE", "maybe")
+    with pytest.raises(ConfigError, match="LLM_JSON_MODE"):
+        load_settings()
+
+
 def test_invalid_numeric_settings_raise_config_error(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "k")
     monkeypatch.setenv("LLM_TIMEOUT_S", "soon")

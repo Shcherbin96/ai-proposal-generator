@@ -121,6 +121,7 @@ def test_provider_rejects_empty_completion(provider, content):
 
 
 def test_provider_happy_path_passes_model_and_temperature(provider):
+    # json_mode defaults to True (Settings default), so response_format is expected.
     create = Mock(return_value=_fake_response("prose"))
     with patch.object(provider._client.chat.completions, "create", create):
         assert provider.complete("prompt") == "prose"
@@ -128,7 +129,17 @@ def test_provider_happy_path_passes_model_and_temperature(provider):
         model=DEFAULT_MODEL,
         messages=[{"role": "user", "content": "prompt"}],
         temperature=0.4,
+        response_format={"type": "json_object"},
     )
+
+
+def test_provider_json_mode_off_omits_response_format():
+    provider = OpenAICompatProvider(Settings(api_key="test-key", json_mode=False))
+    create = Mock(return_value=_fake_response("prose"))
+    with patch.object(provider._client.chat.completions, "create", create):
+        assert provider.complete("prompt") == "prose"
+    _, kwargs = create.call_args
+    assert "response_format" not in kwargs
 
 
 def test_provider_logs_observability_line_with_usage(provider, caplog):

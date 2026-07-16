@@ -44,6 +44,10 @@ Rules:
 Return STRICT JSON, no markdown:
 {{"intro": "...", "items": [{{"index": 0, "description": "..."}}, ...], "closing": "..."}}
 Include every product index from 0 to {last_index} exactly once, in order."""
+# NOTE: when json_mode is on, the OpenAI-compatible `response_format={"type":
+# "json_object"}` param REQUIRES the literal word "json" to appear somewhere
+# in the prompt (the line above satisfies it) — do not "clean up" that
+# phrasing away, it would break JSON mode at the API level, not just in spirit.
 
 
 def build_prompt(data: ProposalInput, seller_name: str, seller_tagline: str) -> str:
@@ -70,6 +74,7 @@ class OpenAICompatProvider:
     def __init__(self, settings: Settings) -> None:
         self._model = settings.model
         self._temperature = settings.temperature
+        self._json_mode = settings.json_mode
         self._client = OpenAI(
             api_key=settings.api_key,
             base_url=settings.base_url,
@@ -80,11 +85,23 @@ class OpenAICompatProvider:
     def complete(self, prompt: str) -> str:
         start = time.perf_counter()
         try:
-            resp = self._client.chat.completions.create(
-                model=self._model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=self._temperature,
-            )
+            if self._json_mode:
+                # Verified live against Gemini's OpenAI-compat endpoint:
+                # accepted, and it returns real resp.usage. strip_code_fence
+                # below stays untouched as graceful degradation for endpoints
+                # without JSON mode.
+                resp = self._client.chat.completions.create(
+                    model=self._model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=self._temperature,
+                    response_format={"type": "json_object"},
+                )
+            else:
+                resp = self._client.chat.completions.create(
+                    model=self._model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=self._temperature,
+                )
         except OpenAIError as exc:
             raise LLMError(f"LLM request failed: {exc}") from exc
         if not resp.choices:
