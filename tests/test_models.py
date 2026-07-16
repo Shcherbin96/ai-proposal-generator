@@ -47,6 +47,13 @@ def test_non_mapping_yaml_raises_input_error(tmp_path):
         load_input(write(tmp_path, "- just\n- a list\n"))
 
 
+def test_non_utf8_file_raises_input_error(tmp_path):
+    p = tmp_path / "p.yaml"
+    p.write_bytes(b"\xff\xfe\x00bad")
+    with pytest.raises(InputError, match="UTF-8"):
+        load_input(p)
+
+
 @pytest.mark.parametrize(
     "text,fragment",
     [

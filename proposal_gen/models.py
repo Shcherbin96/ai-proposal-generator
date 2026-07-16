@@ -51,6 +51,8 @@ def load_input(path: Path) -> ProposalInput:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
         raise InputError(f"Invalid YAML in {path}: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        raise InputError(f"{path}: file is not valid UTF-8 text: {exc}") from exc
     except OSError as exc:
         raise InputError(f"Cannot read {path}: {exc}") from exc
     if not isinstance(raw, dict):
