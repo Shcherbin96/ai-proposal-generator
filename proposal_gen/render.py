@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import shlex
 import shutil
 import subprocess
 from decimal import Decimal
@@ -103,11 +104,15 @@ def html_to_pdf(html: str, out_pdf: Path) -> None:
         out_html.write_text(html, encoding="utf-8")
     except OSError as exc:
         raise RenderError(f"Cannot write output files at {out_pdf.parent}: {exc}") from exc
+    # CHROME_EXTRA_ARGS exists primarily so containers can pass --no-sandbox:
+    # Chromium running as root refuses to start with its kernel sandbox.
+    extra_args = shlex.split(os.getenv("CHROME_EXTRA_ARGS", "").strip())
     cmd = [
         chrome,
         "--headless",
         "--disable-gpu",
         "--no-pdf-header-footer",
+        *extra_args,
         f"--print-to-pdf={out_pdf}",
         out_html.resolve().as_uri(),
     ]
