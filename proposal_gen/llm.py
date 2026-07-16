@@ -80,6 +80,8 @@ class OpenAICompatProvider:
             )
         except OpenAIError as exc:
             raise LLMError(f"LLM request failed: {exc}") from exc
+        if not resp.choices:
+            raise LLMError("LLM returned no choices")
         content = resp.choices[0].message.content
         if not content:
             raise LLMError("LLM returned an empty completion")

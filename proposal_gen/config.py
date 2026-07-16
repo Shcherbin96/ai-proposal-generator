@@ -41,20 +41,26 @@ class Settings:
     max_retries: int = 2
 
 
-def _float_env(name: str, default: str) -> float:
+def _positive_float_env(name: str, default: str) -> float:
     raw = os.getenv(name, default)
     try:
-        return float(raw)
+        value = float(raw)
     except ValueError as exc:
         raise ConfigError(f"{name} must be a number, got {raw!r}") from exc
+    if value <= 0:
+        raise ConfigError(f"{name} must be positive, got {raw!r}")
+    return value
 
 
-def _int_env(name: str, default: str) -> int:
+def _non_negative_int_env(name: str, default: str) -> int:
     raw = os.getenv(name, default)
     try:
-        return int(raw)
+        value = int(raw)
     except ValueError as exc:
         raise ConfigError(f"{name} must be an integer, got {raw!r}") from exc
+    if value < 0:
+        raise ConfigError(f"{name} must be non-negative, got {raw!r}")
+    return value
 
 
 def load_settings() -> Settings:
@@ -67,8 +73,10 @@ def load_settings() -> Settings:
         )
     return Settings(
         api_key=api_key,
-        base_url=os.getenv("LLM_BASE_URL", DEFAULT_BASE_URL),
-        model=os.getenv("LLM_MODEL", DEFAULT_MODEL),
-        timeout_s=_float_env("LLM_TIMEOUT_S", "60"),
-        max_retries=_int_env("LLM_MAX_RETRIES", "2"),
+        # `or DEFAULT`: getenv defaults apply only when unset; treat an empty
+        # string (e.g. a blank line in .env) the same as unset.
+        base_url=os.getenv("LLM_BASE_URL", "").strip() or DEFAULT_BASE_URL,
+        model=os.getenv("LLM_MODEL", "").strip() or DEFAULT_MODEL,
+        timeout_s=_positive_float_env("LLM_TIMEOUT_S", "60"),
+        max_retries=_non_negative_int_env("LLM_MAX_RETRIES", "2"),
     )
