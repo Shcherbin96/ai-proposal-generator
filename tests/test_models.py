@@ -75,3 +75,43 @@ def test_non_utf8_file_raises_input_error(tmp_path):
 def test_schema_violations_raise_input_error(tmp_path, text, fragment):
     with pytest.raises(InputError, match=fragment):
         load_input(write(tmp_path, text))
+
+
+WITH_SELLER = """\
+client: "Client"
+project: "Project"
+products:
+  - name: "Widget"
+    price: 100
+seller:
+  name: "Custom Seller Co"
+  tagline: "Custom tagline"
+  contacts: "custom@example.com"
+"""
+
+
+def test_seller_override_parses_when_present(tmp_path):
+    data = load_input(write(tmp_path, WITH_SELLER))
+    assert data.seller is not None
+    assert data.seller.name == "Custom Seller Co"
+    assert data.seller.tagline == "Custom tagline"
+    assert data.seller.contacts == "custom@example.com"
+
+
+def test_seller_is_none_when_absent(tmp_path):
+    data = load_input(write(tmp_path, VALID))
+    assert data.seller is None
+
+
+def test_seller_with_empty_name_raises_input_error(tmp_path):
+    text = WITH_SELLER.replace('name: "Custom Seller Co"', 'name: ""')
+    with pytest.raises(InputError, match="seller"):
+        load_input(write(tmp_path, text))
+
+
+def test_seller_with_unknown_key_raises_input_error(tmp_path):
+    text = WITH_SELLER.replace(
+        'contacts: "custom@example.com"', 'contacts: "custom@example.com"\n  x: "surprise"'
+    )
+    with pytest.raises(InputError, match="x"):
+        load_input(write(tmp_path, text))

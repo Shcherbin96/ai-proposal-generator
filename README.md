@@ -6,7 +6,7 @@
 
 Turns a YAML product list into a branded, client-ready commercial proposal PDF (КП — *kommercheskoe predlozhenie*, the standard Russian sales document). An LLM writes the prose; Python owns every number. Prices never enter the prompt, the model's reply is rejected unless it covers every product exactly once in order, and the total is computed from the input file — hallucinated numbers are impossible by architecture, not by hope.
 
-The core is deliberately small — about 480 lines of code across seven modules. The point of this project is not volume; it is the production-grade shell around an LLM call: strict data contracts on both sides of the model, typed failures with meaningful exit codes, injection-safe rendering, verified output, and 121 offline tests running on three operating systems in CI. There is more test code than production code. That ratio is the point.
+The core is deliberately small — about 480 lines of code across seven modules. The point of this project is not volume; it is the production-grade shell around an LLM call: strict data contracts on both sides of the model, typed failures with meaningful exit codes, injection-safe rendering, verified output, and 131 offline tests running on three operating systems in CI. There is more test code than production code. That ratio is the point.
 
 <img src="docs/example-proposal.png" alt="Example generated proposal: branded A4 commercial proposal with intro, itemized products with prices, computed total and closing" width="700">
 
@@ -96,6 +96,15 @@ products:
 
 Validation is strict: unknown keys are rejected (typo protection), names must be non-empty, prices must be positive with at most two decimal places, and at least one product is required. The generated prose follows the language of the input — Russian data produces a Russian proposal, English data English prose (though the single bundled template keeps ruble signs and the RU date format; see Limitations).
 
+An optional `seller` block overrides `config.SELLER` for that one document (name, tagline, contacts — all three required when present):
+
+```yaml
+seller:
+  name: "Другая Компания"
+  tagline: "Свой слоган"
+  contacts: "+7 900 000-00-00 · sales@example.com"
+```
+
 ## Configuration
 
 All configuration is via environment variables (or `.env`; see `.env.example`).
@@ -142,10 +151,10 @@ Note the last stage of the pipeline: a PDF is only reported as success after ver
 ## Testing
 
 ```bash
-uv run pytest -q   # 121 passed, ~10 seconds, no API key, no network
+uv run pytest -q   # 131 passed, ~10 seconds, no API key, no network
 ```
 
-All 121 tests run offline. The LLM is replaced by `FakeProvider`, a test double that replays `tests/fixtures/llm_response.json` — byte-for-byte the kind of reply a well-behaved model produces — and records every prompt it receives, so tests can assert on prompt contents (for example, that prices never appear in it). `FakeProvider` also accepts a list of responses, replayed as a one-shot queue, to drive the repair-loop tests through a bad-then-good sequence.
+All 131 tests run offline. The LLM is replaced by `FakeProvider`, a test double that replays `tests/fixtures/llm_response.json` — byte-for-byte the kind of reply a well-behaved model produces — and records every prompt it receives, so tests can assert on prompt contents (for example, that prices never appear in it). `FakeProvider` also accepts a list of responses, replayed as a one-shot queue, to drive the repair-loop tests through a bad-then-good sequence.
 
 What is covered:
 
@@ -175,7 +184,7 @@ ai-proposal-generator/
 │   ├── errors.py           # typed errors mapped to sysexits codes
 │   ├── cli.py              # argparse entry point (python -m proposal_gen)
 │   └── template.html       # branded A4 template (fonts, colors, layout)
-├── tests/                  # 121 offline tests; fixtures/llm_response.json is the canned LLM reply
+├── tests/                  # 131 offline tests; fixtures/llm_response.json is the canned LLM reply
 ├── scripts/make_example.py # regenerates the example PDF offline, no API key needed
 ├── data/products.yaml      # sample input (Russian business case, by design)
 ├── docs/example-proposal.png
@@ -185,7 +194,7 @@ ai-proposal-generator/
 ## Limitations
 
 - **One template.** Branding (company name, tagline, contacts) lives in `config.py`; layout and fonts in `template.html`. Changing the look means editing HTML/CSS — there is no theming system.
-- **Web fonts need network at render time.** The template imports Google Fonts; offline, Chrome falls back to the system fonts declared in the stack (Arial/Georgia). The document stays correct, just less branded.
+- ~~Web fonts need network at render time~~ **Fonts are vendored** (Cormorant Garamond + Manrope as variable WOFF2 under the SIL OFL, see `proposal_gen/fonts/OFL.txt`) — rendering is fully offline and there is no font-loading race with Chrome's `--print-to-pdf`.
 - **Sample data is Russian by design** — this is a real business case, not a toy. The pipeline itself is language-neutral: prose follows the input language.
 - **Headless Chrome is an external dependency.** Chosen deliberately (see below), but it is a real binary you must have installed. A Docker image with bundled Chromium is on the roadmap.
 - **Prose quality is validated structurally, not semantically.** Today the pipeline guarantees the reply's shape, coverage, and safety — not that the writing is good. That gap is the top roadmap item.
@@ -203,8 +212,8 @@ ai-proposal-generator/
 - **`Decimal` end-to-end.** Prices are parsed as `Decimal` with two decimal places enforced at the boundary, summed as `Decimal`, and formatted by a single `money` filter. No float ever touches money, and the displayed line items provably sum to the displayed total.
 - **`sysexits` codes over exit 1.** Four failure classes (65/78/69/73) make the CLI scriptable: automation around it can distinguish bad input from bad config from a downed provider from a render failure without parsing stderr.
 - **A `Protocol` instead of a provider factory.** `LLMProvider` is a structural protocol; the production provider and the test double both satisfy it with no inheritance or registration machinery. Right-sized abstraction for one production implementation and one fake.
-- **Headless Chrome over WeasyPrint.** The template uses real web fonts and modern CSS, and Chrome renders it exactly as a browser would with zero native Python dependencies. The cost — an external binary — is owned openly in Limitations, and its discovery, failure modes, and output verification are all handled and tested.
-- **Test code makes no network calls.** The canned fixture makes the suite deterministic, fast (~10 s), and runnable in any CI without secrets. (The one indirect exception: when online, Chrome itself fetches the template's web fonts during the real-render tests; offline it falls back to system fonts and the tests still pass.) Provider error handling is tested against fakes; the one thing that genuinely needs a real binary — PDF rendering — is tested with real Chrome and loudly asserted present in CI.
+- **Headless Chrome over WeasyPrint.** The template uses real (vendored) fonts and modern CSS, and Chrome renders it exactly as a browser would with zero native Python dependencies. The cost — an external binary — is owned openly in Limitations, and its discovery, failure modes, and output verification are all handled and tested.
+- **Test code makes no network calls.** The canned fixture makes the suite deterministic, fast (~10 s), and runnable in any CI without secrets. Provider error handling is tested against fakes; the one thing that genuinely needs a real binary — PDF rendering — is tested with real Chrome and loudly asserted present in CI.
 - **Layered robustness, each layer owning a different failure class.** JSON mode (`response_format`) shrinks the invalid-JSON class at the API level. The bounded repair loop (`LLM_MAX_REPAIRS`) handles what JSON mode can't — semantic contract violations like wrong or missing indices — by feeding the validation error back to the model. Transport retries (`LLM_MAX_RETRIES`) are the SDK's own concern: network flakiness, not content quality. Three knobs, three distinct failure modes, no overlap.
 
 ## License

@@ -82,6 +82,10 @@ def render_html(template_path: Path, context: dict[str, object]) -> str:
         undefined=StrictUndefined,
     )
     env.filters["money"] = money
+    # Fonts live next to the template, but the intermediate .html is written
+    # next to the OUTPUT pdf — a relative font URL would break there. Inject
+    # an absolute file:// URI instead (URI-safe chars only, autoescape-inert).
+    context = {**context, "fonts_dir": (template_path.parent / "fonts").as_uri()}
     return env.get_template(template_path.name).render(context)
 
 

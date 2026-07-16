@@ -13,3 +13,9 @@ products:
     price: 6700
   - name: "Светильник потолочный влагозащищённый IP44"
     price: 3400
+# Optional: override the seller branding (config.SELLER) for this document only.
+# All three fields are required when the block is present.
+# seller:
+#   name: "Другая Компания"
+#   tagline: "Свой слоган"
+#   contacts: "+7 900 000-00-00 · sales@example.com"

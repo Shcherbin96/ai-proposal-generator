@@ -32,6 +32,23 @@ class Product(BaseModel):
     price: Decimal = Field(gt=0, decimal_places=2)
 
 
+class Seller(BaseModel):
+    """Per-document seller branding override for config.SELLER.
+
+    Optional: when a YAML input omits `seller` entirely, the pipeline falls
+    back to the default in config.py. When present, all three fields are
+    required — a half-specified brand block is more likely a typo than a
+    deliberate partial override.
+    """
+
+    # forbid: fail fast on user typos in the YAML
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str = Field(min_length=1)
+    tagline: str = Field(min_length=1)
+    contacts: str = Field(min_length=1)
+
+
 class ProposalInput(BaseModel):
     # forbid: fail fast on user typos in the YAML
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -39,6 +56,7 @@ class ProposalInput(BaseModel):
     client: str = Field(min_length=1)
     project: str = Field(min_length=1)
     products: list[Product] = Field(min_length=1)
+    seller: Seller | None = None
 
     @property
     def total(self) -> Decimal:
