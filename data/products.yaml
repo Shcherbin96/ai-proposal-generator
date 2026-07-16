@@ -1,4 +1,5 @@
-# Пример входных данных: что и кому предлагаем.
+# Sample input: what we offer and to whom. Prices are the source of truth —
+# the LLM never sees or generates numbers.
 client: "ООО «Ромашка»"
 project: "Ванная комната, 6 м²"
 products:
