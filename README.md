@@ -183,7 +183,9 @@ Every real provider call is logged once at INFO — visible by default, no `-v` 
 
 Tests that need a real Chrome binary skip gracefully on machines without one — but CI runs a separate loud assertion (`find_chrome()` must succeed on every runner) so a runner image losing Chrome breaks the build instead of silently skipping the one path that cannot be tested any other way.
 
-CI (`.github/workflows/ci.yml`) runs ruff lint, ruff format check, and strict mypy on Linux, and the full test suite on Ubuntu, macOS, and Windows, with least-privilege permissions (`contents: read`), per-ref concurrency cancellation, and job timeouts.
+**Coverage:** `uv run pytest --cov=proposal_gen` measures **~98%** (343 statements, 7 missed). The gaps are structural, not neglect: `find_chrome()` takes a different branch per OS (PATH lookup, macOS app bundles, Windows Program Files/`LOCALAPPDATA`), so no single platform exercises every line, and the bare `python -m proposal_gen` entry point (`__main__.py`) only runs as a subprocess, never under pytest. CI enforces a **94% floor on the Linux leg only** — a coverage gate tied to a single, OS-specific line count would be noise on the other two runners.
+
+CI (`.github/workflows/ci.yml`) runs ruff lint, ruff format check, and strict mypy (`proposal_gen`, `scripts`, `evals`) on Linux; the full test suite on Ubuntu, macOS, and Windows, with the coverage gate above on the Linux leg; and a Docker build-only job — all with least-privilege permissions (`contents: read`), per-ref concurrency cancellation, job timeouts, actions pinned by commit SHA, and Dependabot watching both `github-actions` and `uv` weekly.
 
 ## Evals
 
