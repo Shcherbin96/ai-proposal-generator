@@ -14,7 +14,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from proposal_gen.errors import InputError
+from proposal_gen.errors import InputError, LLMError
 
 
 def _format_errors(exc: ValidationError) -> str:
@@ -59,3 +59,35 @@ def load_input(path: Path) -> ProposalInput:
         return ProposalInput.model_validate(raw)
     except ValidationError as exc:
         raise InputError(f"{path}: {_format_errors(exc)}") from exc
+
+
+class LLMItem(BaseModel):
+    """One product description. Matched to a product by index, never by name."""
+
+    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
+
+    index: int = Field(ge=0)
+    description: str = Field(min_length=1)
+
+
+class LLMContent(BaseModel):
+    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
+
+    intro: str = Field(min_length=1)
+    items: list[LLMItem]
+    closing: str = Field(min_length=1)
+
+
+def validate_llm_content(raw: object, expected_count: int) -> LLMContent:
+    """Accept only a response that covers every product exactly once, in order."""
+    try:
+        content = LLMContent.model_validate(raw)
+    except ValidationError as exc:
+        raise LLMError(f"LLM response failed validation: {_format_errors(exc)}") from exc
+    indices = [item.index for item in content.items]
+    if indices != list(range(expected_count)):
+        raise LLMError(
+            f"LLM response must describe all {expected_count} products in order; "
+            f"got indices {indices}"
+        )
+    return content
