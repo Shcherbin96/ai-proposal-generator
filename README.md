@@ -6,7 +6,7 @@
 
 Turns a YAML product list into a branded, client-ready commercial proposal PDF (КП — *kommercheskoe predlozhenie*, the standard Russian sales document). An LLM writes the prose; Python owns every number. Prices never enter the prompt, the model's reply is rejected unless it covers every product exactly once in order, and the total is computed from the input file — hallucinated numbers are impossible by architecture, not by hope.
 
-The core is deliberately small — about 480 lines of code across seven modules. The point of this project is not volume; it is the production-grade shell around an LLM call: strict data contracts on both sides of the model, typed failures with meaningful exit codes, injection-safe rendering, verified output, and 131 offline tests running on three operating systems in CI. There is more test code than production code. That ratio is the point.
+The core is deliberately small — about 560 lines of code across seven modules. The point of this project is not volume; it is the production-grade shell around an LLM call: strict data contracts on both sides of the model, typed failures with meaningful exit codes, injection-safe rendering, verified output, and 152 offline tests running on three operating systems in CI. There is more test code than production code. That ratio is the point.
 
 <img src="docs/example-proposal.png" alt="Example generated proposal: branded A4 commercial proposal with intro, itemized products with prices, computed total and closing" width="700">
 
@@ -151,10 +151,10 @@ Note the last stage of the pipeline: a PDF is only reported as success after ver
 ## Testing
 
 ```bash
-uv run pytest -q   # 131 passed, ~10 seconds, no API key, no network
+uv run pytest -q   # 152 passed, ~10 seconds, no API key, no network
 ```
 
-All 131 tests run offline. The LLM is replaced by `FakeProvider`, a test double that replays `tests/fixtures/llm_response.json` — byte-for-byte the kind of reply a well-behaved model produces — and records every prompt it receives, so tests can assert on prompt contents (for example, that prices never appear in it). `FakeProvider` also accepts a list of responses, replayed as a one-shot queue, to drive the repair-loop tests through a bad-then-good sequence.
+All 152 tests run offline. The LLM is replaced by `FakeProvider`, a test double that replays `tests/fixtures/llm_response.json` — byte-for-byte the kind of reply a well-behaved model produces — and records every prompt it receives, so tests can assert on prompt contents (for example, that prices never appear in it). `FakeProvider` also accepts a list of responses, replayed as a one-shot queue, to drive the repair-loop tests through a bad-then-good sequence.
 
 What is covered:
 
@@ -164,12 +164,31 @@ What is covered:
 - **PDF verification** — failed Chrome exit, timeout, exit-0-with-no-output, wrong magic bytes, and the intermediate-HTML lifecycle (deleted on success, kept on failure).
 - **Cross-platform discovery** — `CHROME_PATH` override, missing-file override, per-user Windows installs via `LOCALAPPDATA`.
 - **Repair loop** — bad JSON and contract violations followed by a good reply, repair budget exhaustion, and the guarantee that a transport-level failure is never mistaken for a repairable one.
+- **Prose quality checks** — every eval check (see [Evals](#evals)) has offline coverage: the canned fixture passes all four, and a hand-crafted failure exists for each one, so a check that silently stopped failing would break the build.
 
 Every real provider call is logged once at INFO — visible by default, no `-v` needed — with model, prompt version, latency, and prompt/completion/total token counts; `-v` adds full request/response debug logging on top.
 
 Tests that need a real Chrome binary skip gracefully on machines without one — but CI runs a separate loud assertion (`find_chrome()` must succeed on every runner) so a runner image losing Chrome breaks the build instead of silently skipping the one path that cannot be tested any other way.
 
 CI (`.github/workflows/ci.yml`) runs ruff lint, ruff format check, and strict mypy on Linux, and the full test suite on Ubuntu, macOS, and Windows, with least-privilege permissions (`contents: read`), per-ref concurrency cancellation, and job timeouts.
+
+## Evals
+
+Structural validation guarantees the reply's *shape*; the eval harness is the answer to "how do you know the generated *text* is good?" It is split in two, and the split is deliberate:
+
+- **Offline** (runs in CI): `evals/checks.py` — four pure functions over `(ProposalInput, LLMContent)`, unit-tested in `tests/test_eval_checks.py` against the canned fixture plus a hand-crafted failure per check. No network, no key, deterministic.
+- **Live** (manual): `scripts/run_evals.py` calls the real provider against five golden inputs in `evals/golden/` (Russian and English, 1 to 20 products, spec-heavy names) and scores every reply with the same checks. Live runs cost money and are nondeterministic — exactly the two things that do not belong in CI — so the committed report, not the run itself, is the reviewable artifact.
+
+The four checks:
+
+1. **Language match** — Cyrillic-letter ratio of the prose vs the input (client, project, product names). A Russian input must produce Russian prose; a heuristic, not a language detector, and honestly named as such.
+2. **Length bounds** — intro 40–400 chars, each description 30–300, closing 30–300: approximations of the prompt's sentence rules that catch truncated or runaway replies.
+3. **No invented numbers** — every digit-run in the prose must trace back to the input text (so "IP44" in a product name legitimizes "44" in prose), and currency symbols in prose fail unconditionally — pricing is never the model's to mention.
+4. **No markdown artifacts** — code fences, bold markers, headings, or bullet lines leaking into what the template renders as plain text.
+
+Headline numbers from the [committed report](docs/eval-report.md) (5 golden inputs × 3 reps × 2 repair configs = 30 live calls to `gemini-2.5-flash-lite`): **26/30 contract-valid on the first reply, 1 recovered by the repair loop, 3 contract failures** (truncated JSON — JSON mode shapes the output but does not guarantee the reply survives to completion). On all 27 contract-valid replies, **every quality check passed: 27/27 on each of the four checks**. Comparing configs: `max_repairs=0` failed 2 of 15 runs, `max_repairs=1` failed 1 of 15 — one data point, not a proof, but consistent with the repair loop earning its place. The run went through OpenRouter because Google's free tier caps this model at 20 requests/day; the report header records that.
+
+To reproduce: `uv run python scripts/run_evals.py --reps 3 --max-repairs 0 1 --output docs/eval-report.md` (needs `LLM_API_KEY`; `--help` works without).
 
 ## Repository layout
 
@@ -184,9 +203,15 @@ ai-proposal-generator/
 │   ├── errors.py           # typed errors mapped to sysexits codes
 │   ├── cli.py              # argparse entry point (python -m proposal_gen)
 │   └── template.html       # branded A4 template (fonts, colors, layout)
-├── tests/                  # 131 offline tests; fixtures/llm_response.json is the canned LLM reply
-├── scripts/make_example.py # regenerates the example PDF offline, no API key needed
+├── tests/                  # 152 offline tests; fixtures/llm_response.json is the canned LLM reply
+├── evals/
+│   ├── checks.py           # prose quality checks: language, length, numbers, markdown
+│   └── golden/             # five golden inputs for the live eval (RU/EN, 1-20 products)
+├── scripts/
+│   ├── make_example.py     # regenerates the example PDF offline, no API key needed
+│   └── run_evals.py        # live eval runner -> docs/eval-report.md (needs an API key)
 ├── data/products.yaml      # sample input (Russian business case, by design)
+├── docs/eval-report.md     # committed live eval report (see Evals)
 ├── docs/example-proposal.png
 └── .github/workflows/ci.yml
 ```
@@ -197,11 +222,11 @@ ai-proposal-generator/
 - ~~Web fonts need network at render time~~ **Fonts are vendored** (Cormorant Garamond + Manrope as variable WOFF2 under the SIL OFL, see `proposal_gen/fonts/OFL.txt`) — rendering is fully offline and there is no font-loading race with Chrome's `--print-to-pdf`.
 - **Sample data is Russian by design** — this is a real business case, not a toy. The pipeline itself is language-neutral: prose follows the input language.
 - **Headless Chrome is an external dependency.** Chosen deliberately (see below), but it is a real binary you must have installed. A Docker image with bundled Chromium is on the roadmap.
-- **Prose quality is validated structurally, not semantically.** Today the pipeline guarantees the reply's shape, coverage, and safety — not that the writing is good. That gap is the top roadmap item.
+- **Prose quality is validated structurally and against automated heuristics — not for persuasiveness.** The pipeline guarantees the reply's shape, coverage, and safety, and the eval harness (see [Evals](#evals)) adds language match, length bounds, no invented numbers, and no markdown artifacts. What is still *not* validated: whether the writing actually sells — tone, persuasiveness, factual aptness of a benefit claim. Those need human judgment or an LLM judge, and pretending a heuristic covers them would be dishonest.
 
 ## Roadmap
 
-1. **Prose eval harness** — a golden set of inputs plus automated checks on the generated text: language matches the input, length bounds per section, and no prices or amounts leaking into prose. This is the honest answer to "how do you know the text is good?" — today, structural validation only.
+1. ~~Prose eval harness~~ — done, see [Evals](#evals): golden inputs, four automated checks, and a committed live report.
 2. **Docker image with bundled Chromium** — removes the only external binary dependency.
 3. **More templates and themes** — pluggable layouts beyond the single branded A4.
 4. **More document types** — invoices and estimates share the same "prose from the model, numbers from the data" architecture.
