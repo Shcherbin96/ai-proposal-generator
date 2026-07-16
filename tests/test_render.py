@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import pytest
+from jinja2 import UndefinedError
 
 from proposal_gen import config
 from proposal_gen.errors import RenderError
@@ -42,7 +43,7 @@ def test_llm_prose_is_escaped_too():
 def test_missing_variable_fails_loudly():
     ctx = full_context()
     del ctx["closing"]
-    with pytest.raises(Exception):  # noqa: B017 -- jinja2.UndefinedError via StrictUndefined
+    with pytest.raises(UndefinedError):  # StrictUndefined turns missing vars into errors
         render_html(config.TEMPLATE, ctx)
 
 
