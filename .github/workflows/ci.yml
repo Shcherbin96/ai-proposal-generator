@@ -45,3 +45,12 @@ jobs:
       - name: Assert Chrome is discoverable
         run: uv run python -c "from proposal_gen.render import find_chrome; print(find_chrome())"
       - run: uv run pytest -v
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # Build-only: proves the image assembles from the same lockfile CI
+      # verifies. No registry push — the Dockerfile is the artifact.
+      - run: docker build -t proposal-gen:ci .

@@ -253,6 +253,43 @@ def test_intermediate_html_deleted_after_successful_pdf(monkeypatch, tmp_path):
     assert not out.with_suffix(".html").exists()
 
 
+def _capture_cmd(monkeypatch, tmp_path):
+    """Run html_to_pdf with a stubbed Chrome, returning the argv it received."""
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        (tmp_path / "out.pdf").write_bytes(b"%PDF-1.7 fake")
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setenv("CHROME_PATH", sys.executable)
+    monkeypatch.setattr("proposal_gen.render.subprocess.run", fake_run)
+    html_to_pdf("<html></html>", tmp_path / "out.pdf")
+    return captured["cmd"]
+
+
+def test_chrome_extra_args_injected_before_print_flag(monkeypatch, tmp_path):
+    monkeypatch.setenv("CHROME_EXTRA_ARGS", "--no-sandbox --disable-dev-shm-usage")
+    cmd = _capture_cmd(monkeypatch, tmp_path)
+    assert "--no-sandbox" in cmd and "--disable-dev-shm-usage" in cmd
+    print_idx = next(i for i, a in enumerate(cmd) if a.startswith("--print-to-pdf"))
+    assert cmd.index("--no-sandbox") < print_idx
+    assert cmd.index("--disable-dev-shm-usage") < print_idx
+
+
+def test_chrome_extra_args_absent_by_default(monkeypatch, tmp_path):
+    monkeypatch.delenv("CHROME_EXTRA_ARGS", raising=False)
+    cmd = _capture_cmd(monkeypatch, tmp_path)
+    assert "" not in cmd  # no empty-string arg sneaks in
+    assert len([a for a in cmd if a.startswith("--")]) == 4  # only the fixed flags
+
+
+def test_chrome_extra_args_respects_shell_quoting(monkeypatch, tmp_path):
+    monkeypatch.setenv("CHROME_EXTRA_ARGS", '--user-agent="Proposal Gen"')
+    cmd = _capture_cmd(monkeypatch, tmp_path)
+    assert "--user-agent=Proposal Gen" in cmd  # shlex keeps the space, drops quotes
+
+
 def test_intermediate_html_kept_on_failure_for_debugging(monkeypatch, tmp_path):
     monkeypatch.setenv("CHROME_PATH", sys.executable)
     out = tmp_path / "out.pdf"
