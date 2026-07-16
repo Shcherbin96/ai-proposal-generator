@@ -69,6 +69,7 @@ class OpenAICompatProvider:
 
     def __init__(self, settings: Settings) -> None:
         self._model = settings.model
+        self._temperature = settings.temperature
         self._client = OpenAI(
             api_key=settings.api_key,
             base_url=settings.base_url,
@@ -82,7 +83,7 @@ class OpenAICompatProvider:
             resp = self._client.chat.completions.create(
                 model=self._model,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.4,
+                temperature=self._temperature,
             )
         except OpenAIError as exc:
             raise LLMError(f"LLM request failed: {exc}") from exc

@@ -39,6 +39,10 @@ class Settings:
     model: str = DEFAULT_MODEL
     timeout_s: float = 60.0
     max_retries: int = 2
+    temperature: float = 0.4
+    # No max_tokens setting: a low cap would truncate JSON mid-object, which
+    # would manufacture exactly the failure the repair loop (Task 4) exists to
+    # fix. Considered and rejected — let responses run to natural completion.
 
 
 def _positive_float_env(name: str, default: str) -> float:
@@ -63,6 +67,18 @@ def _non_negative_int_env(name: str, default: str) -> int:
     return value
 
 
+def _bounded_float_env(name: str, default: str, lo: float, hi: float) -> float:
+    """Like _positive_float_env but allows the boundaries themselves (e.g. 0)."""
+    raw = os.getenv(name, default)
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ConfigError(f"{name} must be a number, got {raw!r}") from exc
+    if not (lo <= value <= hi):
+        raise ConfigError(f"{name} must be between {lo} and {hi}, got {raw!r}")
+    return value
+
+
 def load_settings() -> Settings:
     load_dotenv()  # does not override variables already set in the environment
     api_key = os.getenv("LLM_API_KEY", "").strip()
@@ -79,4 +95,5 @@ def load_settings() -> Settings:
         model=os.getenv("LLM_MODEL", "").strip() or DEFAULT_MODEL,
         timeout_s=_positive_float_env("LLM_TIMEOUT_S", "60"),
         max_retries=_non_negative_int_env("LLM_MAX_RETRIES", "2"),
+        temperature=_bounded_float_env("LLM_TEMPERATURE", "0.4", 0.0, 2.0),
     )
