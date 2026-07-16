@@ -23,6 +23,7 @@ def generate(
     provider: LLMProvider,
     out_pdf: Path | None = None,
     max_repairs: int = 1,
+    today: date | None = None,
 ) -> Path:
     logger.info("Stage 1/4: loading input from %s", data_path)
     data = load_input(data_path)
@@ -36,6 +37,7 @@ def generate(
     logger.info("LLM content validated: %d descriptions", len(content.items))
 
     logger.info("Stage 3/4: rendering HTML")
+    today = today or date.today()
     items = [
         {"name": p.name, "price": p.price, "description": item.description}
         for p, item in zip(data.products, content.items, strict=True)
@@ -46,7 +48,7 @@ def generate(
             "seller": config.SELLER,
             "client": data.client,
             "project": data.project,
-            "date": date.today().strftime("%d.%m.%Y"),
+            "date": today.strftime("%d.%m.%Y"),
             "intro": content.intro,
             "items": items,
             "total": data.total,

@@ -1,4 +1,5 @@
 import logging
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -78,3 +79,22 @@ def test_pipeline_plumbs_max_repairs_to_the_repair_loop(tmp_path, canned_respons
     result = generate(SAMPLE, provider, out_pdf=out, max_repairs=1)
     assert result == out
     assert len(provider.prompts) == 2  # original prompt + one repair prompt
+
+
+def test_generate_uses_injected_date_for_reproducible_output(
+    tmp_path, canned_response, monkeypatch
+):
+    """An explicit `today` must reach the rendered document instead of date.today(),
+    so output is reproducible in tests and snapshots. PDF rendering is stubbed out
+    via a spy that captures the HTML Chrome would have received."""
+    captured = {}
+
+    def spy(html, out_pdf):
+        captured["html"] = html
+        out_pdf.write_bytes(b"%PDF-stub")
+
+    monkeypatch.setattr("proposal_gen.generate.html_to_pdf", spy)
+    provider = FakeProvider(canned_response)
+    out = tmp_path / "proposal.pdf"
+    generate(SAMPLE, provider, out_pdf=out, today=date(2026, 1, 15))
+    assert "15.01.2026" in captured["html"]
