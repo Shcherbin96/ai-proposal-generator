@@ -5,12 +5,13 @@ from pathlib import Path
 
 import pytest
 
+from proposal_gen import config
 from proposal_gen.cli import main
 
 
 def test_missing_api_key_exits_78(monkeypatch, capsys):
     monkeypatch.setenv("LLM_API_KEY", "")
-    assert main(["data/products.yaml"]) == 78
+    assert main([str(config.DATA / "products.yaml")]) == 78
     assert "LLM_API_KEY" in capsys.readouterr().err
 
 
@@ -51,7 +52,7 @@ def test_success_prints_path_and_exits_0(monkeypatch, tmp_path, capsys, canned_r
 
     monkeypatch.setattr(cli, "OpenAICompatProvider", lambda settings: FakeProvider(canned_response))
     out = tmp_path / "kp.pdf"
-    code = main(["data/products.yaml", "--output", str(out)])
+    code = main([str(config.DATA / "products.yaml"), "--output", str(out)])
     assert code == 0
     assert str(out) in capsys.readouterr().out
     assert out.is_file()
@@ -66,7 +67,7 @@ def test_render_failure_exits_73(monkeypatch, tmp_path, capsys, canned_response)
     from tests.conftest import FakeProvider
 
     monkeypatch.setattr(cli, "OpenAICompatProvider", lambda settings: FakeProvider(canned_response))
-    code = main(["data/products.yaml", "--output", str(tmp_path / "x.pdf")])
+    code = main([str(config.DATA / "products.yaml"), "--output", str(tmp_path / "x.pdf")])
     assert code == 73
     assert "Error:" in capsys.readouterr().err
 
