@@ -37,11 +37,23 @@ def test_extra_keys_from_model_are_tolerated():
         ({"intro": "x", "closing": "y"}, "items"),
         ({"items": [], "closing": "y"}, "intro"),
         ("not a dict", "validation"),
+        (payload([-1, 0]), "index"),  # negative index
+        (payload([0, 0.5]), "index"),  # fractional index
+        (payload(["abc", 1]), "index"),  # non-integer index
     ],
 )
 def test_bad_responses_rejected(raw, fragment):
     with pytest.raises(LLMError, match=fragment):
         validate_llm_content(raw, expected_count=2)
+
+
+def test_oversized_bad_response_error_is_capped():
+    """An adversarial 100-item response must not echo the full list back."""
+    with pytest.raises(LLMError) as exc_info:
+        validate_llm_content(payload(list(range(100))), expected_count=2)
+    message = str(exc_info.value)
+    assert "(100 total)" in message
+    assert len(message) < 500
 
 
 def test_empty_description_rejected():

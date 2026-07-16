@@ -66,6 +66,9 @@ def test_non_utf8_file_raises_input_error(tmp_path):
         ("client: c\nproject: p\nproducts: [{name: n, price: abc}]\n", "price"),
         ("client: c\nproject: p\nproducts: [{name: '', price: 1}]\n", "name"),
         ("client: c\nproject: p\nproducts: [{name: n, price: 1, x: 1}]\n", "x"),
+        ("client: c\nproject: p\nproducts: [{name: n, price: .nan}]\n", "price"),
+        ("client: c\nproject: p\nproducts: [{name: n, price: .inf}]\n", "price"),
+        ("client: c\nproject: p\nproducts: [{name: n, price: true}]\n", "price"),
     ],
 )
 def test_schema_violations_raise_input_error(tmp_path, text, fragment):

@@ -24,6 +24,7 @@ def _format_errors(exc: ValidationError) -> str:
 
 
 class Product(BaseModel):
+    # forbid: fail fast on user typos in the YAML
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     name: str = Field(min_length=1)
@@ -31,6 +32,7 @@ class Product(BaseModel):
 
 
 class ProposalInput(BaseModel):
+    # forbid: fail fast on user typos in the YAML
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     client: str = Field(min_length=1)
@@ -66,6 +68,7 @@ def load_input(path: Path) -> ProposalInput:
 class LLMItem(BaseModel):
     """One product description. Matched to a product by index, never by name."""
 
+    # ignore: tolerate extra keys a model may volunteer (e.g. a confidence score)
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
     index: int = Field(ge=0)
@@ -73,6 +76,7 @@ class LLMItem(BaseModel):
 
 
 class LLMContent(BaseModel):
+    # ignore: tolerate extra keys a model may volunteer
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
     intro: str = Field(min_length=1)
@@ -88,8 +92,10 @@ def validate_llm_content(raw: object, expected_count: int) -> LLMContent:
         raise LLMError(f"LLM response failed validation: {_format_errors(exc)}") from exc
     indices = [item.index for item in content.items]
     if indices != list(range(expected_count)):
+        # Cap the echoed list: an adversarial response could carry thousands of items.
+        shown = indices if len(indices) <= 10 else f"{indices[:10]}... ({len(indices)} total)"
         raise LLMError(
             f"LLM response must describe all {expected_count} products in order; "
-            f"got indices {indices}"
+            f"got indices {shown}"
         )
     return content
