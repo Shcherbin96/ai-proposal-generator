@@ -19,6 +19,7 @@ package = false
 dev = [
     "mypy>=2.3.0",
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
     "ruff>=0.15.21",
     "types-pyyaml>=6.0.12.20260518",
 ]
@@ -33,7 +34,13 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["proposal_gen"]
+files = ["proposal_gen", "scripts", "evals"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.report]
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "pragma: no cover",
+]

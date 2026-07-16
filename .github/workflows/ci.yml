@@ -17,14 +17,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           python-version: "3.12"
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy proposal_gen
+      - run: uv run mypy proposal_gen scripts evals
 
   test:
     strategy:
@@ -34,8 +34,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           python-version: "3.12"
       - run: uv sync --locked
@@ -44,13 +44,23 @@ jobs:
       # of the one path that cannot be tested any other way.
       - name: Assert Chrome is discoverable
         run: uv run python -c "from proposal_gen.render import find_chrome; print(find_chrome())"
-      - run: uv run pytest -v
+      - name: Run tests
+        run: uv run pytest -v
+        if: runner.os != 'Linux'
+      # Coverage gate runs on Linux only: render.py's find_chrome() takes a
+      # different code path per OS (PATH lookup vs. macOS app bundles vs.
+      # Windows Program Files/LOCALAPPDATA), so the reachable-line count is
+      # OS-specific. Pinning the gate to one OS keeps the floor meaningful
+      # instead of chasing whichever runner covers the fewest branches.
+      - name: Run tests with coverage gate
+        run: uv run pytest -v --cov=proposal_gen --cov-fail-under=94
+        if: runner.os == 'Linux'
 
   docker:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       # Build-only: proves the image assembles from the same lockfile CI
       # verifies. No registry push — the Dockerfile is the artifact.
       - run: docker build -t proposal-gen:ci .
