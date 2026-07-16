@@ -44,7 +44,17 @@ jobs:
       # of the one path that cannot be tested any other way.
       - name: Assert Chrome is discoverable
         run: uv run python -c "from proposal_gen.render import find_chrome; print(find_chrome())"
-      - run: uv run pytest -v
+      - name: Run tests
+        run: uv run pytest -v
+        if: runner.os != 'Linux'
+      # Coverage gate runs on Linux only: render.py's find_chrome() takes a
+      # different code path per OS (PATH lookup vs. macOS app bundles vs.
+      # Windows Program Files/LOCALAPPDATA), so the reachable-line count is
+      # OS-specific. Pinning the gate to one OS keeps the floor meaningful
+      # instead of chasing whichever runner covers the fewest branches.
+      - name: Run tests with coverage gate
+        run: uv run pytest -v --cov=proposal_gen --cov-fail-under=94
+        if: runner.os == 'Linux'
 
   docker:
     runs-on: ubuntu-latest

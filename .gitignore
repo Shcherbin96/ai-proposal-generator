@@ -5,6 +5,7 @@ __pycache__/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+.coverage
 output/*.pdf
 output/*.html
 .DS_Store
