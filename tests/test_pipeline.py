@@ -5,23 +5,13 @@ from pathlib import Path
 import pytest
 
 from proposal_gen import config, render
-from proposal_gen.errors import RenderError
 from proposal_gen.generate import generate
-from proposal_gen.render import find_chrome
-from tests.conftest import FakeProvider
+from tests.conftest import FakeProvider, chrome_available
 
 SAMPLE = Path(__file__).parents[1] / "data" / "products.yaml"
 
 
-def _chrome_available() -> bool:
-    try:
-        find_chrome()
-        return True
-    except RenderError:
-        return False
-
-
-@pytest.mark.skipif(not _chrome_available(), reason="Chrome/Chromium not installed")
+@pytest.mark.skipif(not chrome_available(), reason="Chrome/Chromium not installed")
 def test_full_pipeline_offline(tmp_path, canned_response, caplog, monkeypatch):
     """Whole pipeline with the canned LLM reply: YAML in, verified PDF out.
 

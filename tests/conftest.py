@@ -3,7 +3,19 @@ from pathlib import Path
 
 import pytest
 
+from proposal_gen.errors import RenderError
+from proposal_gen.render import find_chrome
+
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def chrome_available() -> bool:
+    """Shared skipif guard for tests that need a real Chrome binary."""
+    try:
+        find_chrome()
+        return True
+    except RenderError:
+        return False
 
 
 class FakeProvider:
