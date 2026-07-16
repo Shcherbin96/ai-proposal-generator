@@ -64,7 +64,8 @@ def money(value: Decimal | int) -> str:
 
     Integral values render with no decimals; fractional values render with
     exactly two, so displayed line items always sum to the displayed total.
-    Relies on upstream input validation (price gt=0): NaN and negatives never reach here.
+    Relies on upstream input validation (price gt=0, decimal_places=2):
+    NaN, negatives and sub-kopeck precision never reach here.
     """
     value = Decimal(value)
     s = f"{value:,.0f}" if value == value.to_integral_value() else f"{value:,.2f}"
@@ -118,5 +119,5 @@ def html_to_pdf(html: str, out_pdf: Path) -> None:
     # Success: the intermediate .html has served its purpose — remove it. On
     # any failure above it is deliberately left in place so the exact input
     # Chrome saw can be inspected for debugging.
-    out_html.unlink()
+    out_html.unlink(missing_ok=True)
     logger.info("PDF written: %s (%d bytes)", out_pdf, out_pdf.stat().st_size)

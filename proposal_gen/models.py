@@ -28,7 +28,8 @@ class Product(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     name: str = Field(min_length=1)
-    price: Decimal = Field(gt=0)
+    # decimal_places=2: sub-kopeck prices would break displayed item/total arithmetic
+    price: Decimal = Field(gt=0, decimal_places=2)
 
 
 class ProposalInput(BaseModel):
