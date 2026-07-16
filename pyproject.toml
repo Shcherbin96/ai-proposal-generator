@@ -4,11 +4,11 @@ version = "0.1.0"
 description = "AI generates a branded commercial proposal (КП) PDF from a product list"
 requires-python = ">=3.12"
 dependencies = [
-    "openai>=1.50",        # OpenAI-совместимый клиент (ходим в Gemini)
-    "python-dotenv>=1.0",  # читает ключ из .env
-    "pyyaml>=6.0",         # читает список товаров
-    "jinja2>=3.1",         # HTML-шаблон КП
-    "pydantic>=2.13.4",
+    "openai>=1.50",        # OpenAI-compatible client (Gemini by default)
+    "python-dotenv>=1.0",  # loads the API key from .env
+    "pyyaml>=6.0",         # reads the product list
+    "jinja2>=3.1",         # HTML proposal template
+    "pydantic>=2.13.4",    # data contracts on both LLM boundaries
 ]
 
 [tool.uv]
