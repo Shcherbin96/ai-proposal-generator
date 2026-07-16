@@ -6,7 +6,7 @@
 
 Turns a YAML product list into a branded, client-ready commercial proposal PDF (КП — *kommercheskoe predlozhenie*, the standard Russian sales document). An LLM writes the prose; Python owns every number. Prices never enter the prompt, the model's reply is rejected unless it covers every product exactly once in order, and the total is computed from the input file — hallucinated numbers are impossible by architecture, not by hope.
 
-The core is deliberately small — about 560 lines of code across seven modules. The point of this project is not volume; it is the production-grade shell around an LLM call: strict data contracts on both sides of the model, typed failures with meaningful exit codes, injection-safe rendering, verified output, and 152 offline tests running on three operating systems in CI. There is more test code than production code. That ratio is the point.
+The core is deliberately small — about 560 lines of code across seven modules. The point of this project is not volume; it is the production-grade shell around an LLM call: strict data contracts on both sides of the model, typed failures with meaningful exit codes, injection-safe rendering, verified output, and 155 offline tests running on three operating systems in CI. There is more test code than production code. That ratio is the point.
 
 <img src="docs/example-proposal.png" alt="Example generated proposal: branded A4 commercial proposal with intro, itemized products with prices, computed total and closing" width="700">
 
@@ -80,6 +80,18 @@ Useful flags: `-o path/to/out.pdf` for the output location, `-v` for debug loggi
 uv run python scripts/make_example.py
 ```
 
+### Docker
+
+Zero host dependencies — Chromium and fonts are inside the image (~1.3GB):
+
+```bash
+docker build -t proposal-gen .
+docker run --rm --env-file .env -v ./output:/app/output proposal-gen
+# your own product list:
+docker run --rm --env-file .env -v ./output:/app/output \
+  -v ./my-products.yaml:/app/data/products.yaml proposal-gen
+```
+
 ## Input format
 
 `data/products.yaml`, abbreviated (the bundled sample has five products):
@@ -120,6 +132,7 @@ All configuration is via environment variables (or `.env`; see `.env.example`).
 | `LLM_JSON_MODE` | no | `true` | Request `response_format={"type": "json_object"}` from the provider |
 | `LLM_MAX_REPAIRS` | no | `1` | **Content-level** retries — feeds the validation error back into the prompt on a contract-breaking reply, up to this many times |
 | `CHROME_PATH` | no | auto-discovered | Full path to the Chrome/Chromium binary |
+| `CHROME_EXTRA_ARGS` | no | — | Extra Chrome flags (shell-quoted); the Docker image sets `--no-sandbox --disable-dev-shm-usage` |
 
 The defaults target Google Gemini's OpenAI-compatible endpoint, but nothing in the code is Gemini-specific: point `LLM_BASE_URL` and `LLM_MODEL` at OpenAI, Ollama, vLLM, or any other OpenAI-compatible server and it works unchanged. Numeric settings are validated at startup — a non-numeric timeout is a config error with exit code 78, not a mid-run traceback.
 
@@ -151,10 +164,10 @@ Note the last stage of the pipeline: a PDF is only reported as success after ver
 ## Testing
 
 ```bash
-uv run pytest -q   # 152 passed, ~10 seconds, no API key, no network
+uv run pytest -q   # 155 passed, ~10 seconds, no API key, no network
 ```
 
-All 152 tests run offline. The LLM is replaced by `FakeProvider`, a test double that replays `tests/fixtures/llm_response.json` — byte-for-byte the kind of reply a well-behaved model produces — and records every prompt it receives, so tests can assert on prompt contents (for example, that prices never appear in it). `FakeProvider` also accepts a list of responses, replayed as a one-shot queue, to drive the repair-loop tests through a bad-then-good sequence.
+All 155 tests run offline. The LLM is replaced by `FakeProvider`, a test double that replays `tests/fixtures/llm_response.json` — byte-for-byte the kind of reply a well-behaved model produces — and records every prompt it receives, so tests can assert on prompt contents (for example, that prices never appear in it). `FakeProvider` also accepts a list of responses, replayed as a one-shot queue, to drive the repair-loop tests through a bad-then-good sequence.
 
 What is covered:
 
@@ -203,7 +216,7 @@ ai-proposal-generator/
 │   ├── errors.py           # typed errors mapped to sysexits codes
 │   ├── cli.py              # argparse entry point (python -m proposal_gen)
 │   └── template.html       # branded A4 template (fonts, colors, layout)
-├── tests/                  # 152 offline tests; fixtures/llm_response.json is the canned LLM reply
+├── tests/                  # 155 offline tests; fixtures/llm_response.json is the canned LLM reply
 ├── evals/
 │   ├── checks.py           # prose quality checks: language, length, numbers, markdown
 │   └── golden/             # five golden inputs for the live eval (RU/EN, 1-20 products)
@@ -221,13 +234,13 @@ ai-proposal-generator/
 - **One template.** Branding (company name, tagline, contacts) lives in `config.py`; layout and fonts in `template.html`. Changing the look means editing HTML/CSS — there is no theming system.
 - ~~Web fonts need network at render time~~ **Fonts are vendored** (Cormorant Garamond + Manrope as variable WOFF2 under the SIL OFL, see `proposal_gen/fonts/OFL.txt`) — rendering is fully offline and there is no font-loading race with Chrome's `--print-to-pdf`.
 - **Sample data is Russian by design** — this is a real business case, not a toy. The pipeline itself is language-neutral: prose follows the input language.
-- **Headless Chrome is an external dependency.** Chosen deliberately (see below), but it is a real binary you must have installed. A Docker image with bundled Chromium is on the roadmap.
+- **Headless Chrome is an external dependency for local runs.** Chosen deliberately (see below); the Docker image bundles Chromium, so containerized runs have no host dependency at all.
 - **Prose quality is validated structurally and against automated heuristics — not for persuasiveness.** The pipeline guarantees the reply's shape, coverage, and safety, and the eval harness (see [Evals](#evals)) adds language match, length bounds, no invented numbers, and no markdown artifacts. What is still *not* validated: whether the writing actually sells — tone, persuasiveness, factual aptness of a benefit claim. Those need human judgment or an LLM judge, and pretending a heuristic covers them would be dishonest.
 
 ## Roadmap
 
 1. ~~Prose eval harness~~ — done, see [Evals](#evals): golden inputs, four automated checks, and a committed live report.
-2. **Docker image with bundled Chromium** — removes the only external binary dependency.
+2. ~~Docker image with bundled Chromium~~ — done, see [Docker](#docker).
 3. **More templates and themes** — pluggable layouts beyond the single branded A4.
 4. **More document types** — invoices and estimates share the same "prose from the model, numbers from the data" architecture.
 
