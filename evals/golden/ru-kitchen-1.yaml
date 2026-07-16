@@ -1,0 +1,7 @@
+# Golden input: single product, Russian. Minimal case — exercises length and
+# language checks with almost no prose to work with.
+client: "ИП Кузнецова Е.В."
+project: "Кухня, 9 м²"
+products:
+  - name: "Смеситель кухонный Blanco Antas с выдвижным изливом"
+    price: 12900

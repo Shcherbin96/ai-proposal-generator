@@ -1,0 +1,13 @@
+# Golden input: fully English, four products with prices — exercises the
+# language-match check on the non-Cyrillic side.
+client: "Acme Interiors Ltd"
+project: "Office kitchen, 12 m2"
+products:
+  - name: "Stainless steel undermount sink"
+    price: 340.00
+  - name: "Single-lever kitchen mixer tap"
+    price: 189.50
+  - name: "Under-cabinet LED strip lighting kit"
+    price: 96.00
+  - name: "Compact dishwasher, 45 cm"
+    price: 415.00

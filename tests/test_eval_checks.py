@@ -28,6 +28,8 @@ from proposal_gen.models import (
 )
 
 SAMPLE = Path(__file__).parents[1] / "data" / "products.yaml"
+GOLDEN_DIR = Path(__file__).parents[1] / "evals" / "golden"
+GOLDEN_FILES = sorted(GOLDEN_DIR.glob("*.yaml"))
 
 
 def make_input(
@@ -176,3 +178,17 @@ def test_no_markdown_artifacts_fails_on_markdown(text):
     content = make_content(intro=text)
     result = check_no_markdown_artifacts(data, content)
     assert not result.passed
+
+
+# --- golden input set (Task 2): every file must satisfy the input contract --
+
+
+def test_golden_directory_is_not_empty():
+    assert GOLDEN_FILES, "no golden files found — evals/golden/*.yaml is empty"
+
+
+@pytest.mark.parametrize("golden_file", GOLDEN_FILES, ids=lambda p: p.name)
+def test_golden_input_loads(golden_file):
+    data = load_input(golden_file)
+    assert isinstance(data, ProposalInput)
+    assert len(data.products) >= 1

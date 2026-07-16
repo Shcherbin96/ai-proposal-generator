@@ -1,0 +1,15 @@
+# Sample input: what we offer and to whom. Prices are the source of truth —
+# the LLM never sees or generates numbers.
+client: "ООО «Ромашка»"
+project: "Ванная комната, 6 м²"
+products:
+  - name: "Смеситель для раковины Grohe Eurosmart"
+    price: 8900
+  - name: "Унитаз подвесной Roca Gap с инсталляцией"
+    price: 21500
+  - name: "Полотенцесушитель водяной Сунержа Богема"
+    price: 14200
+  - name: "Зеркало с LED-подсветкой 80×60 см"
+    price: 6700
+  - name: "Светильник потолочный влагозащищённый IP44"
+    price: 3400

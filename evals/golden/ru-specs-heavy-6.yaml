@@ -1,0 +1,18 @@
+# Golden input: 6 products with dense spec tokens in names — dimensions, IP
+# ratings, model/cable codes — the hard case for check_no_invented_numbers'
+# whitelist.
+client: "ООО «ЭлектроСнаб»"
+project: "Электрика для склада, 300 м²"
+products:
+  - name: "Кабель ВВГнг-LS 3×2.5 мм², 100 м"
+    price: 18500
+  - name: "Светильник светодиодный промышленный IP65, 100 Вт"
+    price: 4200
+  - name: "Щит распределительный ЩРН-24, 24 модуля, IP31"
+    price: 9800
+  - name: "Автоматический выключатель ABB 3P C16, 16 А"
+    price: 1650
+  - name: "Розетка силовая IP44 380В, 32 А"
+    price: 2300
+  - name: "Прожектор светодиодный 200 Вт, IP66, 6500К"
+    price: 6700
