@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Protocol
 
 from openai import OpenAI, OpenAIError
@@ -19,6 +20,10 @@ from proposal_gen.errors import LLMError
 from proposal_gen.models import LLMContent, ProposalInput, validate_llm_content
 
 logger = logging.getLogger(__name__)
+
+# Bump this on any change to PROMPT_TEMPLATE's wording or structure — it is
+# logged with every call so prompt regressions can be correlated after the fact.
+PROMPT_VERSION = "1"
 
 PROMPT_TEMPLATE = """\
 You are a sales manager at "{seller}" ({tagline}). Write the prose for a commercial proposal.
@@ -72,6 +77,7 @@ class OpenAICompatProvider:
         )
 
     def complete(self, prompt: str) -> str:
+        start = time.perf_counter()
         try:
             resp = self._client.chat.completions.create(
                 model=self._model,
@@ -85,6 +91,30 @@ class OpenAICompatProvider:
         content = resp.choices[0].message.content
         if not content:
             raise LLMError("LLM returned an empty completion")
+
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        # resp.usage is None on some OpenAI-compatible endpoints that don't
+        # report token counts — degrade to "n/a" rather than crash a
+        # successful call over an observability nicety.
+        usage = resp.usage
+        prompt_tokens: int | str
+        completion_tokens: int | str
+        total_tokens: int | str
+        if usage is None:
+            prompt_tokens = completion_tokens = total_tokens = "n/a"
+        else:
+            prompt_tokens = usage.prompt_tokens
+            completion_tokens = usage.completion_tokens
+            total_tokens = usage.total_tokens
+        logger.info(
+            "LLM call: model=%s prompt_version=%s latency_ms=%d tokens=%s/%s/%s",
+            self._model,
+            PROMPT_VERSION,
+            latency_ms,
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        )
         return content
 
 

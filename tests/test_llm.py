@@ -1,3 +1,4 @@
+import logging
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -80,8 +81,10 @@ def test_request_content_rejects_wrong_count(canned_response):
 # --- OpenAICompatProvider with a mocked client (no network) ---
 
 
-def _fake_response(content):
-    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
+def _fake_response(content, usage=None):
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=content))], usage=usage
+    )
 
 
 @pytest.fixture
@@ -126,3 +129,29 @@ def test_provider_happy_path_passes_model_and_temperature(provider):
         messages=[{"role": "user", "content": "prompt"}],
         temperature=0.4,
     )
+
+
+def test_provider_logs_observability_line_with_usage(provider, caplog):
+    usage = SimpleNamespace(prompt_tokens=12, completion_tokens=34, total_tokens=46)
+    create = Mock(return_value=_fake_response("prose", usage=usage))
+    with (
+        patch.object(provider._client.chat.completions, "create", create),
+        caplog.at_level(logging.INFO),
+    ):
+        provider.complete("prompt")
+    [record] = [r for r in caplog.records if r.message.startswith("LLM call:")]
+    assert f"model={DEFAULT_MODEL}" in record.message
+    assert "prompt_version=1" in record.message
+    assert "tokens=12/34/46" in record.message
+    assert "latency_ms=" in record.message
+
+
+def test_provider_logs_observability_line_with_usage_none(provider, caplog):
+    create = Mock(return_value=_fake_response("prose", usage=None))
+    with (
+        patch.object(provider._client.chat.completions, "create", create),
+        caplog.at_level(logging.INFO),
+    ):
+        provider.complete("prompt")
+    [record] = [r for r in caplog.records if r.message.startswith("LLM call:")]
+    assert "tokens=n/a/n/a/n/a" in record.message
