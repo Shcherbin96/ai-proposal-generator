@@ -1,4 +1,7 @@
+import os
+import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -66,3 +69,18 @@ def test_render_failure_exits_73(monkeypatch, tmp_path, capsys, canned_response)
     code = main(["data/products.yaml", "--output", str(tmp_path / "x.pdf")])
     assert code == 73
     assert "Error:" in capsys.readouterr().err
+
+
+def test_old_generate_module_entry_point_still_works(tmp_path):
+    """python -m proposal_gen.generate was the originally documented command;
+    it must behave like the CLI, not silently no-op."""
+    env = {**os.environ, "LLM_API_KEY": ""}
+    result = subprocess.run(
+        [sys.executable, "-m", "proposal_gen.generate"],
+        capture_output=True,
+        encoding="utf-8",
+        env=env,
+        cwd=Path(__file__).parents[1],
+    )
+    assert result.returncode == 78  # ConfigError, same as python -m proposal_gen
+    assert "LLM_API_KEY" in result.stderr

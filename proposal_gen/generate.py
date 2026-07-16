@@ -51,3 +51,12 @@ def generate(data_path: Path, provider: LLMProvider, out_pdf: Path | None = None
     out_pdf = out_pdf or (config.OUTPUT / "proposal.pdf")
     html_to_pdf(html, out_pdf)
     return out_pdf
+
+
+if __name__ == "__main__":  # pragma: no cover
+    # Kept for backward compatibility: `python -m proposal_gen.generate` was the
+    # originally documented entry point. Import inside the block — a top-level
+    # import of cli would be circular (cli imports generate).
+    from proposal_gen.cli import main
+
+    raise SystemExit(main())
