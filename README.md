@@ -6,7 +6,7 @@
 
 Turns a YAML product list into a branded, client-ready commercial proposal PDF (КП — *kommercheskoe predlozhenie*, the standard Russian sales document). An LLM writes the prose; Python owns every number. Prices never enter the prompt, the model's reply is rejected unless it covers every product exactly once in order, and the total is computed from the input file — hallucinated numbers are impossible by architecture, not by hope.
 
-The core is deliberately small — about 480 lines of code (585 with comments and docstrings) across seven modules. The point of this project is not volume; it is the production-grade shell around an LLM call: strict data contracts on both sides of the model, typed failures with meaningful exit codes, injection-safe rendering, verified output, and 116 offline tests running on three operating systems in CI. There is more test code than production code. That ratio is the point.
+The core is deliberately small — about 480 lines of code across seven modules. The point of this project is not volume; it is the production-grade shell around an LLM call: strict data contracts on both sides of the model, typed failures with meaningful exit codes, injection-safe rendering, verified output, and 116 offline tests running on three operating systems in CI. There is more test code than production code. That ratio is the point.
 
 <img src="docs/example-proposal.png" alt="Example generated proposal: branded A4 commercial proposal with intro, itemized products with prices, computed total and closing" width="700">
 
@@ -156,7 +156,7 @@ What is covered:
 - **Cross-platform discovery** — `CHROME_PATH` override, missing-file override, per-user Windows installs via `LOCALAPPDATA`.
 - **Repair loop** — bad JSON and contract violations followed by a good reply, repair budget exhaustion, and the guarantee that a transport-level failure is never mistaken for a repairable one.
 
-Every real provider call is logged once at INFO with model, prompt version, latency, and prompt/completion/total token counts — visible with `-v`, and the thing that let the live run below be verified end-to-end rather than just trusted.
+Every real provider call is logged once at INFO — visible by default, no `-v` needed — with model, prompt version, latency, and prompt/completion/total token counts; `-v` adds full request/response debug logging on top.
 
 Tests that need a real Chrome binary skip gracefully on machines without one — but CI runs a separate loud assertion (`find_chrome()` must succeed on every runner) so a runner image losing Chrome breaks the build instead of silently skipping the one path that cannot be tested any other way.
 
