@@ -199,3 +199,7 @@ ai-proposal-generator/
 - **A `Protocol` instead of a provider factory.** `LLMProvider` is a structural protocol; the production provider and the test double both satisfy it with no inheritance or registration machinery. Right-sized abstraction for one production implementation and one fake.
 - **Headless Chrome over WeasyPrint.** The template uses real web fonts and modern CSS, and Chrome renders it exactly as a browser would with zero native Python dependencies. The cost — an external binary — is owned openly in Limitations, and its discovery, failure modes, and output verification are all handled and tested.
 - **Test code makes no network calls.** The canned fixture makes the suite deterministic, fast (~10 s), and runnable in any CI without secrets. (The one indirect exception: when online, Chrome itself fetches the template's web fonts during the real-render tests; offline it falls back to system fonts and the tests still pass.) Provider error handling is tested against fakes; the one thing that genuinely needs a real binary — PDF rendering — is tested with real Chrome and loudly asserted present in CI.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
