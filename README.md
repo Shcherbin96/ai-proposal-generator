@@ -6,7 +6,7 @@
 
 Turns a YAML product list into a branded, client-ready commercial proposal PDF (КП — *kommercheskoe predlozhenie*, the standard Russian sales document). An LLM writes the prose; Python owns every number. Prices never enter the prompt, the model's reply is rejected unless it covers every product exactly once in order, and the total is computed from the input file — hallucinated numbers are impossible by architecture, not by hope.
 
-The core is deliberately small — about 480 lines of code across seven modules. The point of this project is not volume; it is the production-grade shell around an LLM call: strict data contracts on both sides of the model, typed failures with meaningful exit codes, injection-safe rendering, verified output, and 116 offline tests running on three operating systems in CI. There is more test code than production code. That ratio is the point.
+The core is deliberately small — about 480 lines of code across seven modules. The point of this project is not volume; it is the production-grade shell around an LLM call: strict data contracts on both sides of the model, typed failures with meaningful exit codes, injection-safe rendering, verified output, and 121 offline tests running on three operating systems in CI. There is more test code than production code. That ratio is the point.
 
 <img src="docs/example-proposal.png" alt="Example generated proposal: branded A4 commercial proposal with intro, itemized products with prices, computed total and closing" width="700">
 
@@ -142,10 +142,10 @@ Note the last stage of the pipeline: a PDF is only reported as success after ver
 ## Testing
 
 ```bash
-uv run pytest -q   # 116 passed, ~10 seconds, no API key, no network
+uv run pytest -q   # 121 passed, ~10 seconds, no API key, no network
 ```
 
-All 116 tests run offline. The LLM is replaced by `FakeProvider`, a test double that replays `tests/fixtures/llm_response.json` — byte-for-byte the kind of reply a well-behaved model produces — and records every prompt it receives, so tests can assert on prompt contents (for example, that prices never appear in it). `FakeProvider` also accepts a list of responses, replayed as a one-shot queue, to drive the repair-loop tests through a bad-then-good sequence.
+All 121 tests run offline. The LLM is replaced by `FakeProvider`, a test double that replays `tests/fixtures/llm_response.json` — byte-for-byte the kind of reply a well-behaved model produces — and records every prompt it receives, so tests can assert on prompt contents (for example, that prices never appear in it). `FakeProvider` also accepts a list of responses, replayed as a one-shot queue, to drive the repair-loop tests through a bad-then-good sequence.
 
 What is covered:
 
@@ -175,7 +175,7 @@ ai-proposal-generator/
 │   ├── errors.py           # typed errors mapped to sysexits codes
 │   ├── cli.py              # argparse entry point (python -m proposal_gen)
 │   └── template.html       # branded A4 template (fonts, colors, layout)
-├── tests/                  # 116 offline tests; fixtures/llm_response.json is the canned LLM reply
+├── tests/                  # 121 offline tests; fixtures/llm_response.json is the canned LLM reply
 ├── scripts/make_example.py # regenerates the example PDF offline, no API key needed
 ├── data/products.yaml      # sample input (Russian business case, by design)
 ├── docs/example-proposal.png

@@ -64,6 +64,20 @@ def test_zero_temperature_is_valid(monkeypatch):
     assert s.temperature == 0.0
 
 
+def test_upper_boundary_temperature_is_valid(monkeypatch):
+    # The range is inclusive on both ends: exactly 2 must pass.
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    monkeypatch.setenv("LLM_TEMPERATURE", "2")
+    assert load_settings().temperature == 2.0
+
+
+def test_temperature_just_above_upper_boundary_raises(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    monkeypatch.setenv("LLM_TEMPERATURE", "2.0000001")
+    with pytest.raises(ConfigError, match="LLM_TEMPERATURE"):
+        load_settings()
+
+
 def test_json_mode_defaults_true(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "k")
     monkeypatch.delenv("LLM_JSON_MODE", raising=False)

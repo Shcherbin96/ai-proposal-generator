@@ -221,3 +221,30 @@ def test_provider_logs_observability_line_with_usage_none(provider, caplog):
         provider.complete("prompt")
     [record] = [r for r in caplog.records if r.message.startswith("LLM call:")]
     assert "tokens=n/a/n/a/n/a" in record.message
+
+
+def test_provider_logs_failure_line_on_openai_error(provider, caplog):
+    create = Mock(side_effect=OpenAIError("boom"))
+    with (
+        patch.object(provider._client.chat.completions, "create", create),
+        caplog.at_level(logging.WARNING),
+        pytest.raises(LLMError, match="request failed"),
+    ):
+        provider.complete("prompt")
+    [record] = [r for r in caplog.records if r.message.startswith("LLM call FAILED:")]
+    assert f"model={DEFAULT_MODEL}" in record.message
+    assert "prompt_version=1" in record.message
+    assert "latency_ms=" in record.message
+    assert "boom" in record.message
+
+
+def test_provider_logs_failure_line_on_empty_completion(provider, caplog):
+    create = Mock(return_value=_fake_response(""))
+    with (
+        patch.object(provider._client.chat.completions, "create", create),
+        caplog.at_level(logging.WARNING),
+        pytest.raises(LLMError, match="empty completion"),
+    ):
+        provider.complete("prompt")
+    [record] = [r for r in caplog.records if r.message.startswith("LLM call FAILED:")]
+    assert "empty completion" in record.message

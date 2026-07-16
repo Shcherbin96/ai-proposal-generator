@@ -85,30 +85,44 @@ class OpenAICompatProvider:
     def complete(self, prompt: str) -> str:
         start = time.perf_counter()
         try:
-            if self._json_mode:
-                # Verified live against Gemini's OpenAI-compat endpoint:
-                # accepted, and it returns real resp.usage. strip_code_fence
-                # below stays untouched as graceful degradation for endpoints
-                # without JSON mode.
-                resp = self._client.chat.completions.create(
-                    model=self._model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=self._temperature,
-                    response_format={"type": "json_object"},
-                )
-            else:
-                resp = self._client.chat.completions.create(
-                    model=self._model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=self._temperature,
-                )
-        except OpenAIError as exc:
-            raise LLMError(f"LLM request failed: {exc}") from exc
-        if not resp.choices:
-            raise LLMError("LLM returned no choices")
-        content = resp.choices[0].message.content
-        if not content:
-            raise LLMError("LLM returned an empty completion")
+            try:
+                if self._json_mode:
+                    # Verified live against Gemini's OpenAI-compat endpoint:
+                    # accepted, and it returns real resp.usage. strip_code_fence
+                    # below stays untouched as graceful degradation for endpoints
+                    # without JSON mode.
+                    resp = self._client.chat.completions.create(
+                        model=self._model,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=self._temperature,
+                        response_format={"type": "json_object"},
+                    )
+                else:
+                    resp = self._client.chat.completions.create(
+                        model=self._model,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=self._temperature,
+                    )
+            except OpenAIError as exc:
+                raise LLMError(f"LLM request failed: {exc}") from exc
+            if not resp.choices:
+                raise LLMError("LLM returned no choices")
+            content = resp.choices[0].message.content
+            if not content:
+                raise LLMError("LLM returned an empty completion")
+        except LLMError as exc:
+            # A failed call must be observable too: without this, a hanging or
+            # erroring provider leaves no latency trail. LLMError messages are
+            # short and contain no raw reply and no credentials.
+            latency_ms = int((time.perf_counter() - start) * 1000)
+            logger.warning(
+                "LLM call FAILED: model=%s prompt_version=%s latency_ms=%d error=%s",
+                self._model,
+                PROMPT_VERSION,
+                latency_ms,
+                exc,
+            )
+            raise
 
         latency_ms = int((time.perf_counter() - start) * 1000)
         # resp.usage is None on some OpenAI-compatible endpoints that don't
