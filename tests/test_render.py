@@ -125,6 +125,47 @@ def test_html_to_pdf_produces_valid_pdf(tmp_path):
     assert out.read_bytes()[:5] == b"%PDF-"
 
 
+@pytest.mark.skipif(not _chrome_available(), reason="Chrome/Chromium not installed")
+def test_multipage_proposal_scales_and_stays_valid(tmp_path):
+    """A 20-item proposal spans multiple pages; rendered end-to-end (render_html
+    + html_to_pdf, real Chrome) it must still be a valid PDF, and — as a stable,
+    same-run comparison — noticeably larger than a 1-item proposal.
+
+    Descriptions are deliberately long (not just "a sentence per item"): the
+    template's fixed per-document overhead (embedded font glyphs for the
+    header/footer/labels, present regardless of item count) would otherwise
+    dominate a short document's size and compress the ratio toward 1.0 no
+    matter how the items themselves are laid out.
+    """
+    description = (
+        "Профессиональное решение с расширенной гарантией и сертификацией "
+        "качества, подходит для интенсивной эксплуатации в жилых и "
+        "коммерческих помещениях любой сложности и назначения на долгие "
+        "годы безотказной службы. "
+    ) * 15
+    many_items = [
+        {
+            "name": f"Товарная позиция номер {i}",
+            "price": Decimal("1000"),
+            "description": description + f"Артикул варианта: {i}.",
+        }
+        for i in range(20)
+    ]
+    one_html = render_html(config.TEMPLATE, full_context())
+    many_html = render_html(config.TEMPLATE, full_context(items=many_items, total=Decimal("20000")))
+
+    one_pdf = tmp_path / "one.pdf"
+    many_pdf = tmp_path / "many.pdf"
+    html_to_pdf(one_html, one_pdf)
+    html_to_pdf(many_html, many_pdf)
+
+    for pdf in (one_pdf, many_pdf):
+        assert pdf.read_bytes()[:5] == b"%PDF-"
+
+    ratio = many_pdf.stat().st_size / one_pdf.stat().st_size
+    assert ratio > 1.5, f"expected 20-item PDF > 1.5x the 1-item PDF, got {ratio:.2f}x"
+
+
 def test_html_to_pdf_rejects_failed_chrome(monkeypatch, tmp_path):
     # sys.executable exists on every platform and exits nonzero when fed
     # Chrome's flags, exercising the "Chrome failed" branch portably.
