@@ -6,7 +6,7 @@
 
 Turns a YAML product list into a branded, client-ready commercial proposal PDF (КП — *kommercheskoe predlozhenie*, the standard Russian sales document). An LLM writes the prose; Python owns every number. Prices never enter the prompt, the model's reply is rejected unless it covers every product exactly once in order, and the total is computed from the input file — hallucinated numbers are impossible by architecture, not by hope.
 
-The core is deliberately small — about 560 lines of code across seven modules. The point of this project is not volume; it is the production-grade shell around an LLM call: strict data contracts on both sides of the model, typed failures with meaningful exit codes, injection-safe rendering, verified output, and 155 offline tests running on three operating systems in CI. There is more test code than production code. That ratio is the point.
+The core is deliberately small — about 560 lines of code across seven modules. The point of this project is not volume; it is the production-grade shell around an LLM call: strict data contracts on both sides of the model, typed failures with meaningful exit codes, injection-safe rendering, verified output, and 162 offline tests running on three operating systems in CI. There is more test code than production code. That ratio is the point.
 
 <img src="docs/example-proposal.png" alt="Example generated proposal: branded A4 commercial proposal with intro, itemized products with prices, computed total and closing" width="700">
 
@@ -165,10 +165,10 @@ Note the last stage of the pipeline: a PDF is only reported as success after ver
 ## Testing
 
 ```bash
-uv run pytest -q   # 155 passed, ~10 seconds, no API key, no network
+uv run pytest -q   # 162 passed, ~10 seconds, no API key, no network
 ```
 
-All 155 tests run offline. The LLM is replaced by `FakeProvider`, a test double that replays `tests/fixtures/llm_response.json` — byte-for-byte the kind of reply a well-behaved model produces — and records every prompt it receives, so tests can assert on prompt contents (for example, that prices never appear in it). `FakeProvider` also accepts a list of responses, replayed as a one-shot queue, to drive the repair-loop tests through a bad-then-good sequence.
+All 162 tests run offline. The LLM is replaced by `FakeProvider`, a test double that replays `tests/fixtures/llm_response.json` — byte-for-byte the kind of reply a well-behaved model produces — and records every prompt it receives, so tests can assert on prompt contents (for example, that prices never appear in it). `FakeProvider` also accepts a list of responses, replayed as a one-shot queue, to drive the repair-loop tests through a bad-then-good sequence.
 
 What is covered:
 
@@ -179,6 +179,7 @@ What is covered:
 - **Cross-platform discovery** — `CHROME_PATH` override, missing-file override, per-user Windows installs via `LOCALAPPDATA`.
 - **Repair loop** — bad JSON and contract violations followed by a good reply, repair budget exhaustion, and the guarantee that a transport-level failure is never mistaken for a repairable one.
 - **Prose quality checks** — every eval check (see [Evals](#evals)) has offline coverage: the canned fixture passes all four, and a hand-crafted failure exists for each one, so a check that silently stopped failing would break the build.
+- **Degradation gate** — `evals/gate.py`'s `evaluate_degradation` is unit-tested offline in `tests/test_run_evals_gate.py` against fake per-run results: a healthy grid returns no failures, a low ok-rate produces a message naming the rate and threshold, and a single failing quality check produces a message naming that check.
 
 Every real provider call is logged once at INFO — visible by default, no `-v` needed — with model, prompt version, latency, and prompt/completion/total token counts; `-v` adds full request/response debug logging on top.
 
@@ -186,14 +187,14 @@ Tests that need a real Chrome binary skip gracefully on machines without one —
 
 **Coverage:** `uv run pytest --cov=proposal_gen` measures **~98%** (343 statements, 7 missed). The gaps are structural, not neglect: `find_chrome()` takes a different branch per OS (PATH lookup, macOS app bundles, Windows Program Files/`LOCALAPPDATA`), so no single platform exercises every line, and the bare `python -m proposal_gen` entry point (`__main__.py`) only runs as a subprocess, never under pytest. CI enforces a **94% floor on the Linux leg only** — a coverage gate tied to a single, OS-specific line count would be noise on the other two runners.
 
-CI (`.github/workflows/ci.yml`) runs ruff lint, ruff format check, and strict mypy (`proposal_gen`, `scripts`, `evals`) on Linux; the full test suite on Ubuntu, macOS, and Windows, with the coverage gate above on the Linux leg; and a Docker build-only job — all with least-privilege permissions (`contents: read`), per-ref concurrency cancellation, job timeouts, actions pinned by commit SHA, and Dependabot watching both `github-actions` and `uv` weekly.
+CI (`.github/workflows/ci.yml`) runs ruff lint, ruff format check, and strict mypy (`proposal_gen`, `scripts`, `evals`) on Linux; the full test suite on Ubuntu, macOS, and Windows, with the coverage gate above on the Linux leg; and a Docker build-only job — all with least-privilege permissions (`contents: read`), per-ref concurrency cancellation, job timeouts, actions pinned by commit SHA, and Dependabot watching both `github-actions` and `uv` weekly. A separate workflow (`.github/workflows/evals.yml`) runs the live evals on a schedule instead of on every push — see [Evals](#evals) for the degradation gate it enforces.
 
 ## Evals
 
 Structural validation guarantees the reply's *shape*; the eval harness is the answer to "how do you know the generated *text* is good?" It is split in two, and the split is deliberate:
 
 - **Offline** (runs in CI): `evals/checks.py` — four pure functions over `(ProposalInput, LLMContent)`, unit-tested in `tests/test_eval_checks.py` against the canned fixture plus a hand-crafted failure per check. No network, no key, deterministic.
-- **Live** (manual): `scripts/run_evals.py` calls the real provider against five golden inputs in `evals/golden/` (Russian and English, 1 to 20 products, spec-heavy names) and scores every reply with the same checks. Live runs cost money and are nondeterministic — exactly the two things that do not belong in CI — so the committed report, not the run itself, is the reviewable artifact.
+- **Live** (scheduled weekly + on-demand): `scripts/run_evals.py` calls the real provider against five golden inputs in `evals/golden/` (Russian and English, 1 to 20 products, spec-heavy names) and scores every reply with the same checks. Live runs cost money and are nondeterministic — exactly the two things that do not belong in the per-push `ci.yml` pipeline — so they run in their own workflow instead, on a schedule rather than gating every commit; the committed report is a point-in-time snapshot, not the only reviewable artifact anymore (see below).
 
 The four checks:
 
@@ -204,7 +205,9 @@ The four checks:
 
 Headline numbers from the [committed report](docs/eval-report.md) (5 golden inputs × 3 reps × 2 repair configs = 30 live calls to `gemini-2.5-flash-lite`): **26/30 contract-valid on the first reply, 1 recovered by the repair loop, 3 contract failures** (truncated JSON — JSON mode shapes the output but does not guarantee the reply survives to completion). On all 27 contract-valid replies, **every quality check passed: 27/27 on each of the four checks**. Comparing configs: `max_repairs=0` failed 2 of 15 runs, `max_repairs=1` failed 1 of 15 — one data point, not a proof, but consistent with the repair loop earning its place. The run went through OpenRouter because Google's free tier caps this model at 20 requests/day; the report header records that.
 
-To reproduce: `uv run python scripts/run_evals.py --reps 3 --max-repairs 0 1 --output docs/eval-report.md` (needs `LLM_API_KEY`; `--help` works without).
+**Continuous monitoring:** evals now run in CI on their own schedule, not just as a manual, on-demand script. `.github/workflows/evals.yml` fires every Monday at 06:00 UTC (plus `workflow_dispatch` for an on-demand run) and makes 10 live calls (5 golden files × 2 reps, `max_repairs=1`) via OpenRouter against the same `gemini-2.5-flash-lite` model as the committed report. The run is gated by `scripts/run_evals.py --fail-under-ok-rate 0.8`: it fails if the overall contract-ok rate `(ok + repaired) / total` drops below 80%, or if any single quality check's pass-rate over contract-valid replies drops below 100% — quality checks passing is the baseline, not a threshold to negotiate. The pure gate logic (`evaluate_degradation`) lives in `evals/gate.py`, independent of the script, so it has offline unit coverage (see [Testing](#testing)). The report is uploaded as a workflow artifact on every run, pass or fail (`if: always()`), and a failing gate automatically opens a GitHub issue linking back to the run — degradation gets surfaced, not silently absorbed.
+
+To reproduce the committed report: `uv run python scripts/run_evals.py --reps 3 --max-repairs 0 1 --output docs/eval-report.md` (needs `LLM_API_KEY`; `--help` works without). To reproduce the scheduled CI run locally: add `--fail-under-ok-rate 0.8` and point `LLM_BASE_URL`/`LLM_MODEL` at OpenRouter, as `evals.yml` does.
 
 ## Repository layout
 
@@ -220,9 +223,10 @@ ai-proposal-generator/
 │   ├── cli.py              # argparse entry point (python -m proposal_gen)
 │   ├── template.html       # branded A4 template (colors, layout)
 │   └── fonts/              # vendored WOFF2 (SIL OFL) — offline branding
-├── tests/                  # 155 offline tests; fixtures/llm_response.json is the canned LLM reply
+├── tests/                  # 162 offline tests; fixtures/llm_response.json is the canned LLM reply
 ├── evals/
 │   ├── checks.py           # prose quality checks: language, length, numbers, markdown
+│   ├── gate.py             # evaluate_degradation: ok-rate + check pass-rate gate (see Evals)
 │   └── golden/             # five golden inputs for the live eval (RU/EN, 1-20 products)
 ├── scripts/
 │   ├── make_example.py     # regenerates the example PDF offline, no API key needed
@@ -231,7 +235,7 @@ ai-proposal-generator/
 ├── docs/eval-report.md     # committed live eval report (see Evals)
 ├── docs/example-proposal.png
 ├── Dockerfile              # bundled Chromium image (see Docker); .dockerignore keeps .env out
-└── .github/                # ci.yml (lint, 3-OS tests, coverage gate, docker build) + dependabot.yml
+└── .github/                # ci.yml (lint/tests/docker), evals.yml (scheduled live evals, see Evals), dependabot.yml
 ```
 
 ## Limitations
@@ -244,7 +248,7 @@ ai-proposal-generator/
 
 ## Roadmap
 
-1. ~~Prose eval harness~~ — done, see [Evals](#evals): golden inputs, four automated checks, and a committed live report.
+1. ~~Prose eval harness~~ — done, see [Evals](#evals): golden inputs, four automated checks, a committed live report, and continuous monitoring via a weekly scheduled CI workflow with an automated degradation gate.
 2. ~~Docker image with bundled Chromium~~ — done, see [Docker](#docker).
 3. **More templates and themes** — pluggable layouts beyond the single branded A4.
 4. **More document types** — invoices and estimates share the same "prose from the model, numbers from the data" architecture.
