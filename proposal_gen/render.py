@@ -94,6 +94,8 @@ def html_to_pdf(html: str, out_pdf: Path) -> None:
         # created") — an unwritable output location belongs there, not in a
         # raw PermissionError traceback with a generic exit 1.
         out_pdf.parent.mkdir(parents=True, exist_ok=True)
+        # A stale PDF from a previous run must never satisfy the verification below.
+        out_pdf.unlink(missing_ok=True)
         out_html.write_text(html, encoding="utf-8")
     except OSError as exc:
         raise RenderError(f"Cannot write output files at {out_pdf.parent}: {exc}") from exc

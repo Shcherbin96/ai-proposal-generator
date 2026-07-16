@@ -154,6 +154,21 @@ def test_html_to_pdf_rejects_exit_zero_without_output(monkeypatch, tmp_path):
         html_to_pdf("<html></html>", tmp_path / "out.pdf")
 
 
+def test_stale_pdf_from_previous_run_is_not_reported_as_success(monkeypatch, tmp_path):
+    """A leftover PDF from an earlier run must not satisfy output verification."""
+    monkeypatch.setenv("CHROME_PATH", sys.executable)
+    out = tmp_path / "out.pdf"
+    out.write_bytes(b"%PDF-1.7 stale content from a previous run")
+
+    # Chrome "succeeds" but writes nothing — without the fix the stale file passes.
+    monkeypatch.setattr(
+        "proposal_gen.render.subprocess.run",
+        lambda *a, **k: subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+    )
+    with pytest.raises(RenderError, match="no PDF"):
+        html_to_pdf("<html></html>", out)
+
+
 def test_html_to_pdf_rejects_wrong_magic_bytes(monkeypatch, tmp_path):
     monkeypatch.setenv("CHROME_PATH", sys.executable)
     out = tmp_path / "out.pdf"
