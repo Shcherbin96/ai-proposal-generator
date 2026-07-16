@@ -236,7 +236,9 @@ def main(argv: list[str] | None = None) -> int:
                         f"Aborting: 3 consecutive failures, last error: {result.error}",
                         file=sys.stderr,
                     )
-                    return 1
+                    # EX_UNAVAILABLE, same as LLMError's exit code in the CLI:
+                    # a dead endpoint / exhausted quota is a provider failure.
+                    return LLMError.exit_code
                 if args.sleep:
                     time.sleep(args.sleep)
         all_results[max_repairs] = results

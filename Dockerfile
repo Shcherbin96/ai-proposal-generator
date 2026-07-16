@@ -4,7 +4,9 @@
 #
 #   docker build -t proposal-gen .
 #   docker run --rm -e LLM_API_KEY=... -v ./output:/app/output proposal-gen
-FROM python:3.12-slim
+# Digest-pinned like the SHA-pinned GitHub Actions — same supply-chain bar
+# everywhere; dependabot's docker ecosystem keeps both pins fresh.
+FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
 
 # Chromium renders the PDF; the template's brand fonts are vendored in-repo
 # (proposal_gen/fonts), fontconfig + DejaVu cover any fallback glyphs.
@@ -12,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium fonts-dejavu-core fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.10.2@sha256:94a23af2d50e97b87b522d3cea24aaf8a1faedec1344c952767434f69585cbf9 /uv /usr/local/bin/uv
 
 WORKDIR /app
 COPY pyproject.toml uv.lock ./

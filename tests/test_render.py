@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import sys
 from decimal import Decimal
@@ -9,6 +10,7 @@ from jinja2 import UndefinedError
 from proposal_gen import config
 from proposal_gen.errors import RenderError
 from proposal_gen.render import find_chrome, html_to_pdf, money, render_html
+from tests.conftest import chrome_available
 
 
 def full_context(**overrides):
@@ -124,15 +126,7 @@ def test_windows_per_user_chrome_found_via_localappdata(monkeypatch, tmp_path):
     assert find_chrome() == str(exe)
 
 
-def _chrome_available() -> bool:
-    try:
-        find_chrome()
-        return True
-    except RenderError:
-        return False
-
-
-@pytest.mark.skipif(not _chrome_available(), reason="Chrome/Chromium not installed")
+@pytest.mark.skipif(not chrome_available(), reason="Chrome/Chromium not installed")
 def test_html_to_pdf_produces_valid_pdf(tmp_path):
     out = tmp_path / "out.pdf"
     html_to_pdf("<html><body><h1>Test</h1></body></html>", out)
@@ -141,7 +135,14 @@ def test_html_to_pdf_produces_valid_pdf(tmp_path):
     assert out.read_bytes()[:5] == b"%PDF-"
 
 
-@pytest.mark.skipif(not _chrome_available(), reason="Chrome/Chromium not installed")
+def _pdf_page_count(pdf_path) -> int:
+    """Max /Count in the PDF's page tree — the root Pages node's child total."""
+    counts = re.findall(rb"/Count\s+(\d+)", pdf_path.read_bytes())
+    assert counts, "no /Count entry found — not a paged PDF?"
+    return max(int(c) for c in counts)
+
+
+@pytest.mark.skipif(not chrome_available(), reason="Chrome/Chromium not installed")
 def test_multipage_proposal_scales_and_stays_valid(tmp_path):
     """A 20-item proposal spans multiple pages; rendered end-to-end (render_html
     + html_to_pdf, real Chrome) it must still be a valid PDF, and — as a stable,
@@ -177,6 +178,11 @@ def test_multipage_proposal_scales_and_stays_valid(tmp_path):
 
     for pdf in (one_pdf, many_pdf):
         assert pdf.read_bytes()[:5] == b"%PDF-"
+
+    # Real page counts, not a size proxy: Chrome writes the page tree's
+    # /Count entry uncompressed, so a bare regex reads it dependency-free.
+    assert _pdf_page_count(one_pdf) == 1
+    assert _pdf_page_count(many_pdf) >= 3, "20 long items must span multiple pages"
 
     ratio = many_pdf.stat().st_size / one_pdf.stat().st_size
     assert ratio > 1.5, f"expected 20-item PDF > 1.5x the 1-item PDF, got {ratio:.2f}x"

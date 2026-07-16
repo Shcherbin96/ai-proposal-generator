@@ -7,9 +7,9 @@ live eval runner (scripts/run_evals.py) against real LLM output.
 Design constraints (deliberate, see Phase 2 plan):
 - Zero new dependencies. The language check is a Cyrillic-ratio heuristic,
   not a language-detection library.
-- The "no invented numbers" check whitelists digit/spec tokens that already
-  appear in the input product names (IP44, 80x60, model numbers, etc. are
-  legitimate to echo back in prose).
+- The "no invented numbers" check whitelists digit-runs that already appear
+  in the input (IP44 contributes "44", "80x60" contributes "80"/"60" — spec
+  digits from product names are legitimate to echo back in prose).
 """
 
 from __future__ import annotations
@@ -40,7 +40,6 @@ LANGUAGE_RATIO_DELTA = 0.35
 CURRENCY_CHARS = "₽$€"
 
 _DIGIT_RUN_RE = re.compile(r"\d+")
-_EDGE_NON_WORD_RE = re.compile(r"^\W+|\W+$", re.UNICODE)
 
 
 @dataclass(frozen=True)
@@ -106,37 +105,22 @@ def check_length_bounds(data: ProposalInput, content: LLMContent) -> CheckResult
     return CheckResult("length_bounds", passed, detail)
 
 
-def _normalize_token(token: str) -> str:
-    """Strip leading/trailing non-word characters, casefold. Keeps internal
-    punctuation like the x in "80x60" intact."""
-    return _EDGE_NON_WORD_RE.sub("", token).casefold()
-
-
 def _build_number_whitelist(data: ProposalInput) -> set[str]:
-    """Digit-bearing tokens and bare digit-runs from everything the model is
-    actually told (client, project, product names — see llm.py:build_prompt;
-    only prices are withheld). This mirrors check_language_match's definition
-    of "the input": a model faithfully echoing a known fact, e.g. the
-    project's area in square meters ("6 m2"), is not "inventing" a number —
-    it's reflecting text it was given. Product names are still the dominant
-    source of legitimate spec tokens (IP44, 80x60, model numbers).
+    """Bare digit-runs from everything the model is actually told (client,
+    project, product names — see llm.py:build_prompt; only prices are
+    withheld). This mirrors check_language_match's definition of "the input":
+    a model faithfully echoing a known fact, e.g. the project's area in
+    square meters ("6 m2"), is not "inventing" a number — it's reflecting
+    text it was given. Product names are the dominant source of legitimate
+    spec digits (IP44 contributes "44", "80x60" contributes "80" and "60").
 
-    Two sources, unioned, per text field:
-    - whole whitespace-split tokens that contain a digit, normalized (e.g.
-      "80x60" or "ip44");
-    - individual digit-runs found anywhere in the text via regex, so "80x60"
-      also contributes "80" and "60", and "IP44" contributes "44".
-    Only the digit-run entries are actually consulted when scanning prose
-    (prose is scanned for bare digit-runs too), but both are built here per
-    the agreed design.
+    Digit-runs are the only currency of this check: the prose scan in
+    check_no_invented_numbers extracts digit-runs too, so any digit in prose
+    is compared run-for-run against these.
     """
     texts = [data.client, data.project, *(p.name for p in data.products)]
     whitelist: set[str] = set()
     for text in texts:
-        for token in text.split():
-            normalized = _normalize_token(token)
-            if normalized and any(ch.isdigit() for ch in normalized):
-                whitelist.add(normalized)
         whitelist.update(_DIGIT_RUN_RE.findall(text))
     return whitelist
 

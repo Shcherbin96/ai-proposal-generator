@@ -159,6 +159,7 @@ Note the last stage of the pipeline: a PDF is only reported as success after ver
 - **Strict contracts on both boundaries.** Input YAML rejects unknown keys and malformed values; the LLM response is schema-validated and index-checked before anything touches the template.
 - **The API key cannot leak through repr.** `Settings.api_key` is declared `repr=False`, so logging or printing the settings object never exposes it; a test asserts this. The key is never written to logs.
 - **Prices are never sent to the model** — a data-minimization boundary as much as a correctness one.
+- **Prompt injection is bounded, not prevented.** Client, project and product names flow from the untrusted YAML straight into the prompt — a hostile name ("ignore previous instructions...") can influence the *prose*. What it cannot do: change any number (prices never round-trip through the model), break the document structure (the reply must still pass the strict index contract or the run fails with exit 69), inject HTML (autoescape), or leak secrets (none are in the prompt). The blast radius is a weird sentence in a document you review before sending — and the eval checks flag invented numbers and markdown artifacts on top.
 - **Documented tradeoff:** client and project names *do* appear in INFO-level logs (pipeline stage messages). They are business data, not secrets; if your log destination is untrusted, route stderr accordingly.
 
 ## Testing
@@ -217,7 +218,8 @@ ai-proposal-generator/
 │   ├── config.py           # env-based settings with validation and secret-safe repr
 │   ├── errors.py           # typed errors mapped to sysexits codes
 │   ├── cli.py              # argparse entry point (python -m proposal_gen)
-│   └── template.html       # branded A4 template (fonts, colors, layout)
+│   ├── template.html       # branded A4 template (colors, layout)
+│   └── fonts/              # vendored WOFF2 (SIL OFL) — offline branding
 ├── tests/                  # 155 offline tests; fixtures/llm_response.json is the canned LLM reply
 ├── evals/
 │   ├── checks.py           # prose quality checks: language, length, numbers, markdown
@@ -228,7 +230,8 @@ ai-proposal-generator/
 ├── data/products.yaml      # sample input (Russian business case, by design)
 ├── docs/eval-report.md     # committed live eval report (see Evals)
 ├── docs/example-proposal.png
-└── .github/workflows/ci.yml
+├── Dockerfile              # bundled Chromium image (see Docker); .dockerignore keeps .env out
+└── .github/                # ci.yml (lint, 3-OS tests, coverage gate, docker build) + dependabot.yml
 ```
 
 ## Limitations
