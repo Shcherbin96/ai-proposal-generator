@@ -96,6 +96,15 @@ products:
 
 Validation is strict: unknown keys are rejected (typo protection), names must be non-empty, prices must be positive with at most two decimal places, and at least one product is required. The generated prose follows the language of the input — Russian data produces a Russian proposal, English data English prose (though the single bundled template keeps ruble signs and the RU date format; see Limitations).
 
+An optional `seller` block overrides `config.SELLER` for that one document (name, tagline, contacts — all three required when present):
+
+```yaml
+seller:
+  name: "Другая Компания"
+  tagline: "Свой слоган"
+  contacts: "+7 900 000-00-00 · sales@example.com"
+```
+
 ## Configuration
 
 All configuration is via environment variables (or `.env`; see `.env.example`).

@@ -28,9 +28,13 @@ def generate(
     logger.info("Stage 1/4: loading input from %s", data_path)
     data = load_input(data_path)
     logger.info("Loaded %d products for client %r", len(data.products), data.client)
+    # A per-document seller (data.seller) overrides the config default; both are
+    # normalized to a dict so the template's `seller.name` attribute access works
+    # identically either way, and the override reaches the prompt too.
+    seller = data.seller.model_dump() if data.seller is not None else config.SELLER
 
     logger.info("Stage 2/4: requesting prose from the LLM")
-    prompt = build_prompt(data, config.SELLER["name"], config.SELLER["tagline"])
+    prompt = build_prompt(data, seller["name"], seller["tagline"])
     content = request_content(
         provider, prompt, expected_count=len(data.products), max_repairs=max_repairs
     )
@@ -45,7 +49,7 @@ def generate(
     html = render_html(
         config.TEMPLATE,
         {
-            "seller": config.SELLER,
+            "seller": seller,
             "client": data.client,
             "project": data.project,
             "date": today.strftime("%d.%m.%Y"),

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from proposal_gen import render
+from proposal_gen import config, render
 from proposal_gen.errors import RenderError
 from proposal_gen.generate import generate
 from proposal_gen.render import find_chrome
@@ -81,12 +81,8 @@ def test_pipeline_plumbs_max_repairs_to_the_repair_loop(tmp_path, canned_respons
     assert len(provider.prompts) == 2  # original prompt + one repair prompt
 
 
-def test_generate_uses_injected_date_for_reproducible_output(
-    tmp_path, canned_response, monkeypatch
-):
-    """An explicit `today` must reach the rendered document instead of date.today(),
-    so output is reproducible in tests and snapshots. PDF rendering is stubbed out
-    via a spy that captures the HTML Chrome would have received."""
+def _spy_html_to_pdf(monkeypatch):
+    """Stub Chrome and return a dict that will hold the captured HTML."""
     captured = {}
 
     def spy(html, out_pdf):
@@ -94,7 +90,47 @@ def test_generate_uses_injected_date_for_reproducible_output(
         out_pdf.write_bytes(b"%PDF-stub")
 
     monkeypatch.setattr("proposal_gen.generate.html_to_pdf", spy)
+    return captured
+
+
+def test_generate_uses_injected_date_for_reproducible_output(
+    tmp_path, canned_response, monkeypatch
+):
+    """An explicit `today` must reach the rendered document instead of date.today(),
+    so output is reproducible in tests and snapshots. PDF rendering is stubbed out
+    via a spy that captures the HTML Chrome would have received."""
+    captured = _spy_html_to_pdf(monkeypatch)
     provider = FakeProvider(canned_response)
     out = tmp_path / "proposal.pdf"
     generate(SAMPLE, provider, out_pdf=out, today=date(2026, 1, 15))
     assert "15.01.2026" in captured["html"]
+
+
+def test_generate_uses_seller_override_from_yaml(tmp_path, canned_response, monkeypatch):
+    """A `seller` block in the input YAML overrides config.SELLER for this document."""
+    captured = _spy_html_to_pdf(monkeypatch)
+    # Start from the real sample (5 products, matching the canned LLM reply's
+    # 5 indexed items) and append a seller override.
+    data_path = tmp_path / "products.yaml"
+    text = SAMPLE.read_text(encoding="utf-8")
+    text += (
+        "seller:\n"
+        "  name: Custom Seller Co\n"
+        "  tagline: Custom tagline\n"
+        "  contacts: custom@example.com\n"
+    )
+    data_path.write_text(text, encoding="utf-8")
+    provider = FakeProvider(canned_response)
+    generate(data_path, provider, out_pdf=tmp_path / "out.pdf")
+    assert "Custom Seller Co" in captured["html"]
+    assert config.SELLER["name"] not in captured["html"]
+
+
+def test_generate_falls_back_to_config_seller_without_override(
+    tmp_path, canned_response, monkeypatch
+):
+    """No `seller` block in the input YAML: config.SELLER is used, as before."""
+    captured = _spy_html_to_pdf(monkeypatch)
+    provider = FakeProvider(canned_response)
+    generate(SAMPLE, provider, out_pdf=tmp_path / "out.pdf")
+    assert config.SELLER["name"] in captured["html"]
