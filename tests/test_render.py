@@ -71,6 +71,22 @@ def test_missing_variable_fails_loudly():
         render_html(config.TEMPLATE, ctx)
 
 
+def test_fonts_are_self_hosted_via_absolute_file_uri():
+    html = render_html(config.TEMPLATE, full_context())
+    assert "fonts.googleapis.com" not in html  # no network at render time
+    assert "@font-face" in html
+    fonts_uri = (config.TEMPLATE.parent / "fonts").as_uri()
+    assert f"{fonts_uri}/manrope-latin.woff2" in html
+    assert f"{fonts_uri}/cormorant-garamond-cyrillic.woff2" in html
+
+
+def test_vendored_font_files_exist_and_are_woff2():
+    fonts = sorted((config.TEMPLATE.parent / "fonts").glob("*.woff2"))
+    assert len(fonts) == 4
+    for f in fonts:
+        assert f.read_bytes()[:4] == b"wOF2", f.name
+
+
 def test_chrome_path_env_override(monkeypatch, tmp_path):
     fake = tmp_path / "chrome"
     fake.write_text("#!/bin/sh\n")
