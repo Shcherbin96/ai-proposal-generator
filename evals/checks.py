@@ -4,7 +4,7 @@ Pure functions over (ProposalInput, LLMContent) — no I/O, no network. These
 run in CI against fixtures (tests/test_eval_checks.py) and are reused by the
 live eval runner (scripts/run_evals.py) against real LLM output.
 
-Design constraints (deliberate, see Phase 2 plan):
+Design constraints (deliberate):
 - Zero new dependencies. The language check is a Cyrillic-ratio heuristic,
   not a language-detection library.
 - The "no invented numbers" check whitelists digit-runs that already appear
