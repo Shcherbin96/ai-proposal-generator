@@ -3,12 +3,37 @@ name = "ai-proposal-generator"
 version = "0.1.0"
 description = "AI generates a branded commercial proposal (КП) PDF from a product list"
 requires-python = ">=3.12"
+license = "MIT"
 dependencies = [
-    "openai>=1.50",        # OpenAI-совместимый клиент (ходим в Gemini)
-    "python-dotenv>=1.0",  # читает ключ из .env
-    "pyyaml>=6.0",         # читает список товаров
-    "jinja2>=3.1",         # HTML-шаблон КП
+    "openai>=1.50",        # OpenAI-compatible client (Gemini by default)
+    "python-dotenv>=1.0",  # loads the API key from .env
+    "pyyaml>=6.0",         # reads the product list
+    "jinja2>=3.1",         # HTML proposal template
+    "pydantic>=2.13.4",    # data contracts on both LLM boundaries
 ]
 
 [tool.uv]
 package = false
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.0",
+    "pytest>=9.1.1",
+    "ruff>=0.15.21",
+    "types-pyyaml>=6.0.12.20260518",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["proposal_gen"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

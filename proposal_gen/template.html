@@ -42,11 +42,11 @@
       <div class="item-name">{{ it.name }}</div>
       <div class="item-desc">{{ it.description }}</div>
     </div>
-    <div class="item-price rub">{{ "{:,.0f}".format(it.price).replace(",", " ") }}</div>
+    <div class="item-price rub">{{ it.price | money }}</div>
   </div>
   {% endfor %}
 
-  <div class="total"><span>Итого</span><b class="rub">{{ "{:,.0f}".format(total).replace(",", " ") }}</b></div>
+  <div class="total"><span>Итого</span><b class="rub">{{ total | money }}</b></div>
 
   <div class="closing">{{ closing }}</div>
 
