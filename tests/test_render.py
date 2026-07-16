@@ -98,6 +98,9 @@ def test_windows_per_user_chrome_found_via_localappdata(monkeypatch, tmp_path):
     monkeypatch.delenv("CHROME_PATH", raising=False)
     monkeypatch.setattr("shutil.which", lambda name: None)
     monkeypatch.setattr("platform.system", lambda: "Windows")
+    # Blank out the machine-wide paths: on a real Windows runner Chrome DOES
+    # exist in Program Files and would win before the per-user fallback.
+    monkeypatch.setattr("proposal_gen.render._WINDOWS_PATHS", ())
     exe = tmp_path / "Google" / "Chrome" / "Application" / "chrome.exe"
     exe.parent.mkdir(parents=True)
     exe.write_bytes(b"")
