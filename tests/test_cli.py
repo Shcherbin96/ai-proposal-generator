@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from proposal_gen.cli import main
@@ -50,3 +52,17 @@ def test_success_prints_path_and_exits_0(monkeypatch, tmp_path, capsys, canned_r
     assert code == 0
     assert str(out) in capsys.readouterr().out
     assert out.is_file()
+
+
+def test_render_failure_exits_73(monkeypatch, tmp_path, capsys, canned_response):
+    monkeypatch.setenv("LLM_API_KEY", "test")
+    # sys.executable exists everywhere and exits nonzero when fed Chrome's
+    # flags: a portable "chrome that fails" (no /bin/false on macOS).
+    monkeypatch.setenv("CHROME_PATH", sys.executable)
+    from proposal_gen import cli
+    from tests.conftest import FakeProvider
+
+    monkeypatch.setattr(cli, "OpenAICompatProvider", lambda settings: FakeProvider(canned_response))
+    code = main(["data/products.yaml", "--output", str(tmp_path / "x.pdf")])
+    assert code == 73
+    assert "Error:" in capsys.readouterr().err

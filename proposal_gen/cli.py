@@ -32,6 +32,9 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
         stream=sys.stderr,
+        # force: basicConfig is a no-op once the root logger has handlers, so
+        # without it a second main() call in one process would ignore -v.
+        force=True,
     )
 
     try:

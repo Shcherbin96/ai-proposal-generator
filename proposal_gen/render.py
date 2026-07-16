@@ -88,9 +88,15 @@ def render_html(template_path: Path, context: dict[str, object]) -> str:
 def html_to_pdf(html: str, out_pdf: Path) -> None:
     """Print HTML to PDF via headless Chrome; verify the output is a real PDF."""
     chrome = find_chrome()
-    out_pdf.parent.mkdir(parents=True, exist_ok=True)
     out_html = out_pdf.with_suffix(".html")
-    out_html.write_text(html, encoding="utf-8")
+    try:
+        # RenderError's exit code 73 is EX_CANTCREAT ("output file cannot be
+        # created") — an unwritable output location belongs there, not in a
+        # raw PermissionError traceback with a generic exit 1.
+        out_pdf.parent.mkdir(parents=True, exist_ok=True)
+        out_html.write_text(html, encoding="utf-8")
+    except OSError as exc:
+        raise RenderError(f"Cannot write output files at {out_pdf.parent}: {exc}") from exc
     cmd = [
         chrome,
         "--headless",

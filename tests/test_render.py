@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 from decimal import Decimal
@@ -183,3 +184,20 @@ def test_intermediate_html_kept_on_failure_for_debugging(monkeypatch, tmp_path):
     with pytest.raises(RenderError):
         html_to_pdf("<html></html>", out)
     assert out.with_suffix(".html").is_file()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
+def test_html_to_pdf_wraps_filesystem_oserror_as_render_error(monkeypatch, tmp_path):
+    # Exit code 73 is EX_CANTCREAT: "output file cannot be created". An
+    # unwritable output directory must surface as RenderError, not as a raw
+    # PermissionError traceback with a generic exit 1.
+    monkeypatch.setenv("CHROME_PATH", sys.executable)
+    read_only_dir = tmp_path / "ro"
+    read_only_dir.mkdir()
+    read_only_dir.chmod(0o444)
+    try:
+        with pytest.raises(RenderError, match="Cannot write"):
+            html_to_pdf("<html></html>", read_only_dir / "x.pdf")
+    finally:
+        # Restore permissions so pytest can clean up tmp_path.
+        read_only_dir.chmod(0o755)
