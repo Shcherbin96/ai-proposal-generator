@@ -39,6 +39,12 @@ class Settings:
     model: str = DEFAULT_MODEL
     timeout_s: float = 60.0
     max_retries: int = 2
+    temperature: float = 0.4
+    # No max_tokens setting: a low cap would truncate JSON mid-object, which
+    # would manufacture exactly the failure the repair loop (Task 4) exists to
+    # fix. Considered and rejected — let responses run to natural completion.
+    json_mode: bool = True
+    max_repairs: int = 1
 
 
 def _positive_float_env(name: str, default: str) -> float:
@@ -63,6 +69,32 @@ def _non_negative_int_env(name: str, default: str) -> int:
     return value
 
 
+_TRUE_VALUES = {"1", "true", "yes", "on"}
+_FALSE_VALUES = {"0", "false", "no", "off"}
+
+
+def _bool_env(name: str, default: str) -> bool:
+    raw = os.getenv(name, default)
+    normalized = raw.strip().lower()
+    if normalized in _TRUE_VALUES:
+        return True
+    if normalized in _FALSE_VALUES:
+        return False
+    raise ConfigError(f"{name} must be one of true/false (1/0, yes/no, on/off), got {raw!r}")
+
+
+def _bounded_float_env(name: str, default: str, lo: float, hi: float) -> float:
+    """Like _positive_float_env but allows the boundaries themselves (e.g. 0)."""
+    raw = os.getenv(name, default)
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ConfigError(f"{name} must be a number, got {raw!r}") from exc
+    if not (lo <= value <= hi):
+        raise ConfigError(f"{name} must be between {lo} and {hi}, got {raw!r}")
+    return value
+
+
 def load_settings() -> Settings:
     load_dotenv()  # does not override variables already set in the environment
     api_key = os.getenv("LLM_API_KEY", "").strip()
@@ -79,4 +111,7 @@ def load_settings() -> Settings:
         model=os.getenv("LLM_MODEL", "").strip() or DEFAULT_MODEL,
         timeout_s=_positive_float_env("LLM_TIMEOUT_S", "60"),
         max_retries=_non_negative_int_env("LLM_MAX_RETRIES", "2"),
+        temperature=_bounded_float_env("LLM_TEMPERATURE", "0.4", 0.0, 2.0),
+        json_mode=_bool_env("LLM_JSON_MODE", "true"),
+        max_repairs=_non_negative_int_env("LLM_MAX_REPAIRS", "1"),
     )

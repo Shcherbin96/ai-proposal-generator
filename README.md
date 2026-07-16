@@ -6,7 +6,7 @@
 
 Turns a YAML product list into a branded, client-ready commercial proposal PDF (КП — *kommercheskoe predlozhenie*, the standard Russian sales document). An LLM writes the prose; Python owns every number. Prices never enter the prompt, the model's reply is rejected unless it covers every product exactly once in order, and the total is computed from the input file — hallucinated numbers are impossible by architecture, not by hope.
 
-The core is deliberately small — about 370 lines of code (562 with comments and docstrings) across seven modules. The point of this project is not volume; it is the production-grade shell around an LLM call: strict data contracts on both sides of the model, typed failures with meaningful exit codes, injection-safe rendering, verified output, and 84 offline tests running on three operating systems in CI. There is more test code than production code. That ratio is the point.
+The core is deliberately small — about 480 lines of code across seven modules. The point of this project is not volume; it is the production-grade shell around an LLM call: strict data contracts on both sides of the model, typed failures with meaningful exit codes, injection-safe rendering, verified output, and 121 offline tests running on three operating systems in CI. There is more test code than production code. That ratio is the point.
 
 <img src="docs/example-proposal.png" alt="Example generated proposal: branded A4 commercial proposal with intro, itemized products with prices, computed total and closing" width="700">
 
@@ -106,7 +106,10 @@ All configuration is via environment variables (or `.env`; see `.env.example`).
 | `LLM_BASE_URL` | no | `https://generativelanguage.googleapis.com/v1beta/openai/` | OpenAI-compatible endpoint |
 | `LLM_MODEL` | no | `gemini-2.5-flash-lite` | Model name at that endpoint |
 | `LLM_TIMEOUT_S` | no | `60` | Request timeout, seconds |
-| `LLM_MAX_RETRIES` | no | `2` | Transport-level retries (handled by the OpenAI SDK) |
+| `LLM_MAX_RETRIES` | no | `2` | **Transport-level** retries — network/HTTP failures, handled by the OpenAI SDK |
+| `LLM_TEMPERATURE` | no | `0.4` | Sampling temperature, `0`–`2` |
+| `LLM_JSON_MODE` | no | `true` | Request `response_format={"type": "json_object"}` from the provider |
+| `LLM_MAX_REPAIRS` | no | `1` | **Content-level** retries — feeds the validation error back into the prompt on a contract-breaking reply, up to this many times |
 | `CHROME_PATH` | no | auto-discovered | Full path to the Chrome/Chromium binary |
 
 The defaults target Google Gemini's OpenAI-compatible endpoint, but nothing in the code is Gemini-specific: point `LLM_BASE_URL` and `LLM_MODEL` at OpenAI, Ollama, vLLM, or any other OpenAI-compatible server and it works unchanged. Numeric settings are validated at startup — a non-numeric timeout is a config error with exit code 78, not a mid-run traceback.
@@ -124,6 +127,8 @@ Every *expected* failure is a typed exception with a human-readable one-line mes
 
 The philosophy: expected failures are caught, classified, and explained; **unexpected failures traceback**. That is deliberate — an unknown bug should look like a bug, not be laundered into a polite message that hides the stack.
 
+A contract-breaking LLM reply is not immediately fatal: it goes through up to `LLM_MAX_REPAIRS` repair attempts (the validation error is fed back to the model) before exit 69 is reported. Exit 69 means the repair budget, not just one attempt, is exhausted.
+
 Note the last stage of the pipeline: a PDF is only reported as success after verification — Chrome exited 0, the file exists, it is non-empty, and it starts with the `%PDF-` magic bytes. "Chrome exited 0 but produced no PDF" is a real failure mode and it is tested.
 
 ## Security considerations
@@ -137,10 +142,10 @@ Note the last stage of the pipeline: a PDF is only reported as success after ver
 ## Testing
 
 ```bash
-uv run pytest -q   # 84 passed, ~10 seconds, no API key, no network
+uv run pytest -q   # 121 passed, ~10 seconds, no API key, no network
 ```
 
-All 84 tests run offline. The LLM is replaced by `FakeProvider`, a test double that replays `tests/fixtures/llm_response.json` — byte-for-byte the kind of reply a well-behaved model produces — and records every prompt it receives, so tests can assert on prompt contents (for example, that prices never appear in it).
+All 121 tests run offline. The LLM is replaced by `FakeProvider`, a test double that replays `tests/fixtures/llm_response.json` — byte-for-byte the kind of reply a well-behaved model produces — and records every prompt it receives, so tests can assert on prompt contents (for example, that prices never appear in it). `FakeProvider` also accepts a list of responses, replayed as a one-shot queue, to drive the repair-loop tests through a bad-then-good sequence.
 
 What is covered:
 
@@ -149,6 +154,9 @@ What is covered:
 - **Error paths** — every error class maps to its exit code through the real CLI; provider errors are wrapped, filesystem errors surface as `RenderError`.
 - **PDF verification** — failed Chrome exit, timeout, exit-0-with-no-output, wrong magic bytes, and the intermediate-HTML lifecycle (deleted on success, kept on failure).
 - **Cross-platform discovery** — `CHROME_PATH` override, missing-file override, per-user Windows installs via `LOCALAPPDATA`.
+- **Repair loop** — bad JSON and contract violations followed by a good reply, repair budget exhaustion, and the guarantee that a transport-level failure is never mistaken for a repairable one.
+
+Every real provider call is logged once at INFO — visible by default, no `-v` needed — with model, prompt version, latency, and prompt/completion/total token counts; `-v` adds full request/response debug logging on top.
 
 Tests that need a real Chrome binary skip gracefully on machines without one — but CI runs a separate loud assertion (`find_chrome()` must succeed on every runner) so a runner image losing Chrome breaks the build instead of silently skipping the one path that cannot be tested any other way.
 
@@ -167,7 +175,7 @@ ai-proposal-generator/
 │   ├── errors.py           # typed errors mapped to sysexits codes
 │   ├── cli.py              # argparse entry point (python -m proposal_gen)
 │   └── template.html       # branded A4 template (fonts, colors, layout)
-├── tests/                  # 84 offline tests; fixtures/llm_response.json is the canned LLM reply
+├── tests/                  # 121 offline tests; fixtures/llm_response.json is the canned LLM reply
 ├── scripts/make_example.py # regenerates the example PDF offline, no API key needed
 ├── data/products.yaml      # sample input (Russian business case, by design)
 ├── docs/example-proposal.png
@@ -179,17 +187,15 @@ ai-proposal-generator/
 - **One template.** Branding (company name, tagline, contacts) lives in `config.py`; layout and fonts in `template.html`. Changing the look means editing HTML/CSS — there is no theming system.
 - **Web fonts need network at render time.** The template imports Google Fonts; offline, Chrome falls back to the system fonts declared in the stack (Arial/Georgia). The document stays correct, just less branded.
 - **Sample data is Russian by design** — this is a real business case, not a toy. The pipeline itself is language-neutral: prose follows the input language.
-- **No repair loop on a bad LLM reply.** A contract-breaking response fails cleanly with exit 69 rather than being retried with feedback. (Transport-level retries for network flakiness do exist, via the SDK.) A bounded repair loop is on the roadmap; failing loudly was the right default to ship first.
 - **Headless Chrome is an external dependency.** Chosen deliberately (see below), but it is a real binary you must have installed. A Docker image with bundled Chromium is on the roadmap.
 - **Prose quality is validated structurally, not semantically.** Today the pipeline guarantees the reply's shape, coverage, and safety — not that the writing is good. That gap is the top roadmap item.
 
 ## Roadmap
 
 1. **Prose eval harness** — a golden set of inputs plus automated checks on the generated text: language matches the input, length bounds per section, and no prices or amounts leaking into prose. This is the honest answer to "how do you know the text is good?" — today, structural validation only.
-2. **Bounded retry-with-repair** — on a contract-breaking reply, feed the validation error back to the model for a limited number of attempts before failing with exit 69.
-3. **Docker image with bundled Chromium** — removes the only external binary dependency.
-4. **More templates and themes** — pluggable layouts beyond the single branded A4.
-5. **More document types** — invoices and estimates share the same "prose from the model, numbers from the data" architecture.
+2. **Docker image with bundled Chromium** — removes the only external binary dependency.
+3. **More templates and themes** — pluggable layouts beyond the single branded A4.
+4. **More document types** — invoices and estimates share the same "prose from the model, numbers from the data" architecture.
 
 ## Key architectural decisions
 
@@ -199,6 +205,7 @@ ai-proposal-generator/
 - **A `Protocol` instead of a provider factory.** `LLMProvider` is a structural protocol; the production provider and the test double both satisfy it with no inheritance or registration machinery. Right-sized abstraction for one production implementation and one fake.
 - **Headless Chrome over WeasyPrint.** The template uses real web fonts and modern CSS, and Chrome renders it exactly as a browser would with zero native Python dependencies. The cost — an external binary — is owned openly in Limitations, and its discovery, failure modes, and output verification are all handled and tested.
 - **Test code makes no network calls.** The canned fixture makes the suite deterministic, fast (~10 s), and runnable in any CI without secrets. (The one indirect exception: when online, Chrome itself fetches the template's web fonts during the real-render tests; offline it falls back to system fonts and the tests still pass.) Provider error handling is tested against fakes; the one thing that genuinely needs a real binary — PDF rendering — is tested with real Chrome and loudly asserted present in CI.
+- **Layered robustness, each layer owning a different failure class.** JSON mode (`response_format`) shrinks the invalid-JSON class at the API level. The bounded repair loop (`LLM_MAX_REPAIRS`) handles what JSON mode can't — semantic contract violations like wrong or missing indices — by feeding the validation error back to the model. Transport retries (`LLM_MAX_RETRIES`) are the SDK's own concern: network flakiness, not content quality. Three knobs, three distinct failure modes, no overlap.
 
 ## License
 

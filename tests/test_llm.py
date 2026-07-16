@@ -1,3 +1,5 @@
+import json
+import logging
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -77,11 +79,67 @@ def test_request_content_rejects_wrong_count(canned_response):
         request_content(provider, "prompt", expected_count=3)
 
 
+# --- bounded repair loop ---
+
+
+def test_request_content_repairs_after_bad_json_then_succeeds(canned_response):
+    provider = FakeProvider(["this is not json", canned_response])
+    content = request_content(provider, "prompt", expected_count=5, max_repairs=1)
+    assert len(content.items) == 5
+    assert len(provider.prompts) == 2
+    repair_prompt = provider.prompts[1]
+    assert "not valid JSON" in repair_prompt
+    assert "corrected" in repair_prompt
+
+
+def test_request_content_repairs_after_wrong_indices_then_succeeds(canned_response):
+    bad = json.dumps({"intro": "hi", "items": [{"index": 0, "description": "d"}], "closing": "bye"})
+    provider = FakeProvider([bad, canned_response])
+    content = request_content(provider, "prompt", expected_count=5, max_repairs=1)
+    assert len(content.items) == 5
+    assert len(provider.prompts) == 2
+    assert "in order" in provider.prompts[1]
+
+
+def test_request_content_max_repairs_zero_fails_after_one_call():
+    provider = FakeProvider("this is not json")
+    with pytest.raises(LLMError, match="not valid JSON"):
+        request_content(provider, "prompt", expected_count=1, max_repairs=0)
+    assert len(provider.prompts) == 1
+
+
+def test_request_content_exhausts_repairs_and_raises_last_error():
+    provider = FakeProvider(["this is not json", "still not json"])
+    with pytest.raises(LLMError, match="not valid JSON"):
+        request_content(provider, "prompt", expected_count=1, max_repairs=1)
+    assert len(provider.prompts) == 2
+
+
+class _TransportFailingProvider:
+    """Simulates a transport-level failure raised from inside complete()."""
+
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+
+    def complete(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        raise LLMError("request failed")
+
+
+def test_request_content_transport_error_propagates_without_repair():
+    provider = _TransportFailingProvider()
+    with pytest.raises(LLMError, match="request failed"):
+        request_content(provider, "prompt", expected_count=1, max_repairs=3)
+    assert len(provider.prompts) == 1
+
+
 # --- OpenAICompatProvider with a mocked client (no network) ---
 
 
-def _fake_response(content):
-    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
+def _fake_response(content, usage=None):
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=content))], usage=usage
+    )
 
 
 @pytest.fixture
@@ -118,6 +176,7 @@ def test_provider_rejects_empty_completion(provider, content):
 
 
 def test_provider_happy_path_passes_model_and_temperature(provider):
+    # json_mode defaults to True (Settings default), so response_format is expected.
     create = Mock(return_value=_fake_response("prose"))
     with patch.object(provider._client.chat.completions, "create", create):
         assert provider.complete("prompt") == "prose"
@@ -125,4 +184,67 @@ def test_provider_happy_path_passes_model_and_temperature(provider):
         model=DEFAULT_MODEL,
         messages=[{"role": "user", "content": "prompt"}],
         temperature=0.4,
+        response_format={"type": "json_object"},
     )
+
+
+def test_provider_json_mode_off_omits_response_format():
+    provider = OpenAICompatProvider(Settings(api_key="test-key", json_mode=False))
+    create = Mock(return_value=_fake_response("prose"))
+    with patch.object(provider._client.chat.completions, "create", create):
+        assert provider.complete("prompt") == "prose"
+    _, kwargs = create.call_args
+    assert "response_format" not in kwargs
+
+
+def test_provider_logs_observability_line_with_usage(provider, caplog):
+    usage = SimpleNamespace(prompt_tokens=12, completion_tokens=34, total_tokens=46)
+    create = Mock(return_value=_fake_response("prose", usage=usage))
+    with (
+        patch.object(provider._client.chat.completions, "create", create),
+        caplog.at_level(logging.INFO),
+    ):
+        provider.complete("prompt")
+    [record] = [r for r in caplog.records if r.message.startswith("LLM call:")]
+    assert f"model={DEFAULT_MODEL}" in record.message
+    assert "prompt_version=1" in record.message
+    assert "tokens=12/34/46" in record.message
+    assert "latency_ms=" in record.message
+
+
+def test_provider_logs_observability_line_with_usage_none(provider, caplog):
+    create = Mock(return_value=_fake_response("prose", usage=None))
+    with (
+        patch.object(provider._client.chat.completions, "create", create),
+        caplog.at_level(logging.INFO),
+    ):
+        provider.complete("prompt")
+    [record] = [r for r in caplog.records if r.message.startswith("LLM call:")]
+    assert "tokens=n/a/n/a/n/a" in record.message
+
+
+def test_provider_logs_failure_line_on_openai_error(provider, caplog):
+    create = Mock(side_effect=OpenAIError("boom"))
+    with (
+        patch.object(provider._client.chat.completions, "create", create),
+        caplog.at_level(logging.WARNING),
+        pytest.raises(LLMError, match="request failed"),
+    ):
+        provider.complete("prompt")
+    [record] = [r for r in caplog.records if r.message.startswith("LLM call FAILED:")]
+    assert f"model={DEFAULT_MODEL}" in record.message
+    assert "prompt_version=1" in record.message
+    assert "latency_ms=" in record.message
+    assert "boom" in record.message
+
+
+def test_provider_logs_failure_line_on_empty_completion(provider, caplog):
+    create = Mock(return_value=_fake_response(""))
+    with (
+        patch.object(provider._client.chat.completions, "create", create),
+        caplog.at_level(logging.WARNING),
+        pytest.raises(LLMError, match="empty completion"),
+    ):
+        provider.complete("prompt")
+    [record] = [r for r in caplog.records if r.message.startswith("LLM call FAILED:")]
+    assert "empty completion" in record.message

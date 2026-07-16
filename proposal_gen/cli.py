@@ -40,7 +40,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         settings = config.load_settings()
         provider = OpenAICompatProvider(settings)
-        pdf = generate(Path(args.input), provider, Path(args.output) if args.output else None)
+        pdf = generate(
+            Path(args.input),
+            provider,
+            Path(args.output) if args.output else None,
+            max_repairs=settings.max_repairs,
+        )
     except ProposalError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return exc.exit_code

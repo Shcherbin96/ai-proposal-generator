@@ -63,3 +63,18 @@ def test_pipeline_validates_input_before_calling_llm(tmp_path, canned_response):
     with pytest.raises(InputError):
         generate(bad, provider, out_pdf=tmp_path / "x.pdf")
     assert provider.prompts == []  # LLM was never consulted
+
+
+def test_pipeline_plumbs_max_repairs_to_the_repair_loop(tmp_path, canned_response, monkeypatch):
+    """max_repairs passed to generate() must reach request_content's loop:
+    a bad first reply followed by a good one succeeds in exactly two calls.
+    PDF rendering is stubbed out — this test is about the LLM plumbing, not Chrome."""
+    monkeypatch.setattr(
+        "proposal_gen.generate.html_to_pdf",
+        lambda html, out_pdf: out_pdf.write_bytes(b"%PDF-stub"),
+    )
+    provider = FakeProvider(["this is not json", canned_response])
+    out = tmp_path / "proposal.pdf"
+    result = generate(SAMPLE, provider, out_pdf=out, max_repairs=1)
+    assert result == out
+    assert len(provider.prompts) == 2  # original prompt + one repair prompt
