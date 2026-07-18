@@ -1,6 +1,6 @@
 [project]
 name = "ai-proposal-generator"
-version = "0.1.0"
+version = "1.0.0"
 description = "AI generates a branded commercial proposal (КП) PDF from a product list"
 requires-python = ">=3.12"
 license = "MIT"
