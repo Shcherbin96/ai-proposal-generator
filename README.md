@@ -263,6 +263,13 @@ ai-proposal-generator/
 - **Test code makes no network calls.** The canned fixture makes the suite deterministic, fast (~10 s), and runnable in any CI without secrets. Provider error handling is tested against fakes; the one thing that genuinely needs a real binary — PDF rendering — is tested with real Chrome and loudly asserted present in CI.
 - **Layered robustness, each layer owning a different failure class.** JSON mode (`response_format`) shrinks the invalid-JSON class at the API level. The bounded repair loop (`LLM_MAX_REPAIRS`) handles what JSON mode can't — semantic contract violations like wrong or missing indices — by feeding the validation error back to the model. Transport retries (`LLM_MAX_RETRIES`) are the SDK's own concern: network flakiness, not content quality. Three knobs, three distinct failure modes, no overlap.
 
+## Portfolio & demo
+
+- [Case study](docs/portfolio-case.md) — the engineering decisions and the
+  measured result, written for a technical reviewer.
+- [Demo script](docs/demo-script.md) — a 5–7 minute walkthrough.
+- [Changelog](CHANGELOG.md) — released as **v1.0.0**.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
